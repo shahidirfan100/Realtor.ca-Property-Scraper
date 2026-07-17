@@ -1,0 +1,13 @@
+{
+    "startUrl": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD",
+    "keyword": "",
+    "location": "",
+    "results_wanted": 20,
+    "max_pages": 2,
+    "proxyConfiguration": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": [
+            "RESIDENTIAL"
+        ]
+    }
+}

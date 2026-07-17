@@ -1,0 +1,39 @@
+{
+    "actorSpecification": 1,
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": [
+                    "price",
+                    "address",
+                    "city",
+                    "province",
+                    "bedrooms",
+                    "bathrooms",
+                    "property_type",
+                    "mls_number",
+                    "url",
+                    "photo_url",
+                    "photo_urls"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "price": { "label": "Price", "format": "text" },
+                    "address": { "label": "Address", "format": "text" },
+                    "city": { "label": "City", "format": "text" },
+                    "province": { "label": "Province", "format": "text" },
+                    "bedrooms": { "label": "Beds", "format": "text" },
+                    "bathrooms": { "label": "Baths", "format": "text" },
+                    "property_type": { "label": "Type", "format": "text" },
+                    "mls_number": { "label": "MLS", "format": "text" },
+                    "url": { "label": "URL", "format": "link" },
+                    "photo_url": { "label": "Photo", "format": "image" },
+                    "photo_urls": { "label": "Photo URLs", "format": "text" }
+                }
+            }
+        }
+    }
+}

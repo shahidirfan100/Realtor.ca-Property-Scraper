@@ -1,0 +1,61 @@
+{
+    "title": "Realtor.ca Property Scraper",
+    "description": "Extract property listings from Realtor.ca. Provide a Realtor.ca map URL or use keyword and location filters.",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "startUrl": {
+            "title": "Realtor.ca URL",
+            "type": "string",
+            "description": "A Realtor.ca map/search URL. URL filters are used first when provided.",
+            "editor": "textfield",
+            "prefill": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD"
+        },
+        "keyword": {
+            "title": "Keyword",
+            "type": "string",
+            "description": "Optional keyword filter such as condo, waterfront, garage, or an MLS number.",
+            "editor": "textfield",
+            "prefill": ""
+        },
+        "location": {
+            "title": "Location",
+            "type": "string",
+            "description": "Optional city shortcut when no URL is provided. Supported examples: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton.",
+            "editor": "textfield",
+            "prefill": ""
+        },
+        "results_wanted": {
+            "title": "Results wanted",
+            "type": "integer",
+            "description": "Maximum number of property listings to save.",
+            "minimum": 1,
+            "default": 20,
+            "prefill": 20,
+            "editor": "number"
+        },
+        "max_pages": {
+            "title": "Max pages",
+            "type": "integer",
+            "description": "Maximum number of result pages to request.",
+            "minimum": 1,
+            "default": 2,
+            "prefill": 2,
+            "editor": "number"
+        },
+        "proxyConfiguration": {
+            "title": "Proxy configuration",
+            "type": "object",
+            "description": "Residential proxies are recommended for Realtor.ca.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true,
+                "apifyProxyGroups": [
+                    "RESIDENTIAL"
+                ]
+            }
+        }
+    },
+    "required": [],
+    "additionalProperties": false
+}
