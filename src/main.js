@@ -17,122 +17,40 @@ const DEFAULT_BOUNDS = {
 };
 
 const LOCATION_BOUNDS = {
-    toronto: {
-        LatitudeMax: '43.85546',
-        LongitudeMax: '-79.00248',
-        LatitudeMin: '43.45830',
-        LongitudeMin: '-79.63926',
-        ZoomLevel: '11',
-    },
-    'toronto, on': {
-        LatitudeMax: '43.85546',
-        LongitudeMax: '-79.00248',
-        LatitudeMin: '43.45830',
-        LongitudeMin: '-79.63926',
-        ZoomLevel: '11',
-    },
-    vancouver: {
-        LatitudeMax: '49.36270',
-        LongitudeMax: '-122.80178',
-        LatitudeMin: '49.00231',
-        LongitudeMin: '-123.38184',
-        ZoomLevel: '11',
-    },
-    'vancouver, bc': {
-        LatitudeMax: '49.36270',
-        LongitudeMax: '-122.80178',
-        LatitudeMin: '49.00231',
-        LongitudeMin: '-123.38184',
-        ZoomLevel: '11',
-    },
-    montreal: {
-        LatitudeMax: '45.70479',
-        LongitudeMax: '-73.36668',
-        LatitudeMin: '45.40216',
-        LongitudeMin: '-73.97210',
-        ZoomLevel: '11',
-    },
-    'montreal, qc': {
-        LatitudeMax: '45.70479',
-        LongitudeMax: '-73.36668',
-        LatitudeMin: '45.40216',
-        LongitudeMin: '-73.97210',
-        ZoomLevel: '11',
-    },
-    calgary: {
-        LatitudeMax: '51.21215',
-        LongitudeMax: '-113.78358',
-        LatitudeMin: '50.84252',
-        LongitudeMin: '-114.31576',
-        ZoomLevel: '11',
-    },
-    'calgary, ab': {
-        LatitudeMax: '51.21215',
-        LongitudeMax: '-113.78358',
-        LatitudeMin: '50.84252',
-        LongitudeMin: '-114.31576',
-        ZoomLevel: '11',
-    },
-    ottawa: {
-        LatitudeMax: '45.53758',
-        LongitudeMax: '-75.24658',
-        LatitudeMin: '45.18104',
-        LongitudeMin: '-76.35321',
-        ZoomLevel: '10',
-    },
-    'ottawa, on': {
-        LatitudeMax: '45.53758',
-        LongitudeMax: '-75.24658',
-        LatitudeMin: '45.18104',
-        LongitudeMin: '-76.35321',
-        ZoomLevel: '10',
-    },
-    edmonton: {
-        LatitudeMax: '53.71695',
-        LongitudeMax: '-113.18368',
-        LatitudeMin: '53.39576',
-        LongitudeMin: '-113.71305',
-        ZoomLevel: '11',
-    },
-    'edmonton, ab': {
-        LatitudeMax: '53.71695',
-        LongitudeMax: '-113.18368',
-        LatitudeMin: '53.39576',
-        LongitudeMin: '-113.71305',
-        ZoomLevel: '11',
-    },
+    toronto: { LatitudeMax: '43.85546', LongitudeMax: '-79.00248', LatitudeMin: '43.45830', LongitudeMin: '-79.63926', ZoomLevel: '11' },
+    'toronto, on': { LatitudeMax: '43.85546', LongitudeMax: '-79.00248', LatitudeMin: '43.45830', LongitudeMin: '-79.63926', ZoomLevel: '11' },
+    vancouver: { LatitudeMax: '49.36270', LongitudeMax: '-122.80178', LatitudeMin: '49.00231', LongitudeMin: '-123.38184', ZoomLevel: '11' },
+    'vancouver, bc': { LatitudeMax: '49.36270', LongitudeMax: '-122.80178', LatitudeMin: '49.00231', LongitudeMin: '-123.38184', ZoomLevel: '11' },
+    montreal: { LatitudeMax: '45.70479', LongitudeMax: '-73.36668', LatitudeMin: '45.40216', LongitudeMin: '-73.97210', ZoomLevel: '11' },
+    'montreal, qc': { LatitudeMax: '45.70479', LongitudeMax: '-73.36668', LatitudeMin: '45.40216', LongitudeMin: '-73.97210', ZoomLevel: '11' },
+    calgary: { LatitudeMax: '51.21215', LongitudeMax: '-113.78358', LatitudeMin: '50.84252', LongitudeMin: '-114.31576', ZoomLevel: '11' },
+    'calgary, ab': { LatitudeMax: '51.21215', LongitudeMax: '-113.78358', LatitudeMin: '50.84252', LongitudeMin: '-114.31576', ZoomLevel: '11' },
+    ottawa: { LatitudeMax: '45.53758', LongitudeMax: '-75.24658', LatitudeMin: '45.18104', LongitudeMin: '-76.35321', ZoomLevel: '10' },
+    'ottawa, on': { LatitudeMax: '45.53758', LongitudeMax: '-75.24658', LatitudeMin: '45.18104', LongitudeMin: '-76.35321', ZoomLevel: '10' },
+    edmonton: { LatitudeMax: '53.71695', LongitudeMax: '-113.18368', LatitudeMin: '53.39576', LongitudeMin: '-113.71305', ZoomLevel: '11' },
+    'edmonton, ab': { LatitudeMax: '53.71695', LongitudeMax: '-113.18368', LatitudeMin: '53.39576', LongitudeMin: '-113.71305', ZoomLevel: '11' },
 };
 
 const URL_PARAM_KEYS = new Set([
-    'ZoomLevel',
-    'Center',
-    'LatitudeMax',
-    'LongitudeMax',
-    'LatitudeMin',
-    'LongitudeMin',
-    'Sort',
-    'PropertyTypeGroupID',
-    'TransactionTypeId',
-    'PropertySearchTypeId',
-    'Currency',
-    'PriceMin',
-    'PriceMax',
-    'BedRange',
-    'BathRange',
-    'BuildingTypeId',
-    'ConstructionStyleId',
-    'OwnershipTypeGroupId',
-    'StoreyRange',
-    'Keywords',
-    'ListingIds',
-    'OpenHouse',
-    'OpenHouseStartDate',
-    'OpenHouseEndDate',
+    'ZoomLevel', 'Center', 'LatitudeMax', 'LongitudeMax', 'LatitudeMin', 'LongitudeMin',
+    'Sort', 'PropertyTypeGroupID', 'TransactionTypeId', 'PropertySearchTypeId', 'Currency',
+    'PriceMin', 'PriceMax', 'BedRange', 'BathRange', 'BuildingTypeId', 'ConstructionStyleId',
+    'OwnershipTypeGroupId', 'StoreyRange', 'Keywords', 'ListingIds', 'OpenHouse', 'OpenHouseStartDate', 'OpenHouseEndDate',
 ]);
 
 const DETAIL_PAGE_HEADERS = {
     accept: 'application/json, text/javascript, */*; q=0.01',
     'accept-language': 'en-CA,en;q=0.9',
+    'x-requested-with': 'XMLHttpRequest',
+};
+
+const HTTP_HEADERS = {
+    accept: 'application/json, text/javascript, */*; q=0.01',
+    'accept-language': 'en-CA,en;q=0.9',
+    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    origin: 'https://www.realtor.ca',
+    referer: 'https://www.realtor.ca/',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'x-requested-with': 'XMLHttpRequest',
 };
 
@@ -170,9 +88,7 @@ function parseRealtorUrl(rawUrl) {
 function buildSearchParams(input) {
     const sourceUrl = firstInputUrl(input);
     const urlParams = parseRealtorUrl(sourceUrl);
-    const locationKey = String(input.location || '')
-        .trim()
-        .toLowerCase();
+    const locationKey = String(input.location || '').trim().toLowerCase();
     const locationBounds = locationKey ? LOCATION_BOUNDS[locationKey] : null;
     const resultsWanted = Math.max(Number(input.results_wanted || 20), 1);
     const recordsPerPage = String(Math.min(Math.max(Number(input.records_per_page || 50), 1), 100, resultsWanted));
@@ -254,16 +170,31 @@ function absoluteRealtorUrl(pathOrUrl) {
     }
 }
 
+function toPhotoArray(property) {
+    if (Array.isArray(property.Photo)) return property.Photo;
+    if (property.Photo) return [property.Photo];
+    return [];
+}
+
+function pickPhotoUrl(photo) {
+    return photo.HighResPath || photo.MedResPath || photo.LowResPath || photo.PhotoPath;
+}
+
 function photoUrls(property = {}) {
-    const photos = property.Photo;
-    if (!Array.isArray(photos)) return undefined;
-    const urls = photos.map((photo) => photo.HighResPath || photo.PhotoPath);
+    const photos = toPhotoArray(property);
+    if (!photos.length) return undefined;
+    const urls = photos.map(pickPhotoUrl).filter(Boolean);
     return [...new Set(urls.map(absoluteRealtorUrl).filter(Boolean))];
 }
 
+function firstPhotoUrl(property = {}) {
+    const photo = toPhotoArray(property)[0];
+    if (!photo) return undefined;
+    return absoluteRealtorUrl(pickPhotoUrl(photo));
+}
+
 function listingPropertyId(listing = {}) {
-    const detailsPath =
-        listing.RelativeDetailsURL || listing.Property?.RelativeDetailsURL || listing.AlternateURL?.DetailsLink;
+    const detailsPath = listing.RelativeDetailsURL || listing.Property?.RelativeDetailsURL || listing.AlternateURL?.DetailsLink;
     const pathId = detailsPath?.match(/\/(?:real-estate|immobilier)\/(\d+)\//i)?.[1];
     return listing.Id || listing.Property?.PropertyID || pathId;
 }
@@ -316,13 +247,8 @@ function mapListing(listing, details = null) {
         features: property.Features,
         amenities_nearby: property.AmmenitiesNearBy,
         public_remarks: listing.PublicRemarks || property.PublicRemarks,
-        photo_url: absoluteRealtorUrl(
-            detailProperty.Photo?.[0]?.HighResPath ||
-                property.Photo?.[0]?.HighResPath ||
-                property.Photo?.[0]?.MedResPath ||
-                property.Photo?.[0]?.LowResPath,
-        ),
-        photo_urls: photoUrls(detailProperty)?.length ? photoUrls(detailProperty) : photoUrls(property),
+        photo_url: firstPhotoUrl(detailProperty) || firstPhotoUrl(property),
+        photo_urls: photoUrls(detailProperty) || photoUrls(property),
         agents: agents.map((agent) =>
             cleanRecord({
                 name: agent.Name,
@@ -347,29 +273,13 @@ function mapListing(listing, details = null) {
     });
 }
 
-function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
-
-function jitter(min = 500, max = 2000) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 function findBrowserPath() {
     const isWin = process.platform === 'win32';
 
     if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
         const pwDir = process.env.PLAYWRIGHT_BROWSERS_PATH;
         const candidates = [
-            join(
-                pwDir,
-                'chromium_headless_shell-1217',
-                isWin
-                    ? 'chrome-headless-shell-win64\\chrome-headless-shell.exe'
-                    : 'chrome-headless-shell-linux64/chrome-headless-shell',
-            ),
+            join(pwDir, 'chromium_headless_shell-1217', isWin ? 'chrome-headless-shell-win64\\chrome-headless-shell.exe' : 'chrome-headless-shell-linux64/chrome-headless-shell'),
             join(pwDir, 'chromium-1217', isWin ? 'chrome-win64\\chrome.exe' : 'chrome-linux64/chrome'),
         ];
         for (const c of candidates) {
@@ -408,8 +318,7 @@ async function createBrowserApiSession(mapUrl) {
 
     const browser = await chromium.launch(launchOptions);
     const context = await browser.newContext({
-        userAgent:
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         viewport: { width: 1536, height: 864 },
         locale: 'en-CA',
         timezoneId: 'America/Toronto',
@@ -428,7 +337,7 @@ async function createBrowserApiSession(mapUrl) {
         const started = Date.now();
         while (Date.now() - started < timeoutMs) {
             if (responsesByPage.has(key)) return responsesByPage.get(key);
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(300);
         }
         return undefined;
     }
@@ -451,25 +360,18 @@ async function createBrowserApiSession(mapUrl) {
     });
 
     log.info('Opening Realtor.ca map to establish browser API session.');
-    await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+    await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     const dismiss = page.getByRole('link', { name: 'Dismiss' });
-    if (await dismiss.isVisible({ timeout: 10000 }).catch(() => false)) {
-        await dismiss.click({ timeout: 10000 }).catch(() => {});
+    if (await dismiss.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await dismiss.click({ timeout: 5000 }).catch(() => {});
     }
 
-    await page.waitForTimeout(2000);
     if (!sessionReady) {
-        await waitForCachedPage('1', undefined, 30000);
-    }
-    if (!sessionReady) {
-        log.info('No API response captured after initial load; reloading map once.');
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
         await waitForCachedPage('1', undefined, 15000);
     }
     if (!sessionReady) {
-        log.info('Forcing API call via page context to establish session.');
+        log.info('No API response captured after initial load; forcing API call.');
         const body = toFormBody({
             ...Object.fromEntries(new URLSearchParams()),
             CurrentPage: '1',
@@ -501,57 +403,55 @@ async function createBrowserApiSession(mapUrl) {
             if (captured) return captured;
 
             const body = toFormBody(params).toString();
-            for (let attempt = 1; attempt <= 3; attempt++) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
-                    const result = await page.evaluate(async (b) => {
-                        const r = await fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
-                            method: 'POST',
+                    const apiResponse = await context.request.post(
+                        'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post',
+                        {
                             headers: {
                                 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
                                 origin: 'https://www.realtor.ca',
                                 referer: 'https://www.realtor.ca/',
                             },
-                            body: b,
-                        });
-                        return { ok: r.ok, status: r.status, text: await r.text() };
-                    }, body);
-
-                    if (!result.ok) {
-                        const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 5000);
+                            data: body,
+                        },
+                    );
+                    if (!apiResponse.ok()) {
+                        const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 3000);
                         if (delayed) return delayed;
-                        throw new Error(`HTTP ${result.status}: ${result.text.slice(0, 200)}`);
+                        throw new Error(`HTTP ${apiResponse.status()}`);
                     }
-
-                    const data = JSON.parse(result.text);
+                    const data = await apiResponse.json();
                     if (Array.isArray(data.Results)) {
                         responsesByPage.set(key, data);
                         sessionReady = true;
                     }
                     return data;
                 } catch {
-                    const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 3000);
+                    const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 2000);
                     if (delayed) return delayed;
-                    if (attempt === 3) {
-                        const apiResponse = await context.request.post(
-                            'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post',
-                            {
+                    if (attempt === 2) {
+                        const result = await page.evaluate(async (b) => {
+                            const r = await fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
+                                method: 'POST',
                                 headers: {
                                     'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
                                     origin: 'https://www.realtor.ca',
                                     referer: 'https://www.realtor.ca/',
                                 },
-                                data: body,
-                            },
-                        );
-                        if (!apiResponse.ok()) throw new Error(`HTTP ${apiResponse.status()}`);
-                        const data = await apiResponse.json();
+                                body: b,
+                            });
+                            return { ok: r.ok, status: r.status, text: await r.text() };
+                        }, body);
+
+                        if (!result.ok) throw new Error(`HTTP ${result.status}: ${result.text.slice(0, 200)}`);
+                        const data = JSON.parse(result.text);
                         if (Array.isArray(data.Results)) responsesByPage.set(key, data);
                         return data;
                     }
-                    await page.waitForTimeout(1000);
                 }
             }
-            throw new Error(`Failed to fetch search results after 3 attempts for page ${params.CurrentPage}`);
+            throw new Error(`Failed to fetch search results after 2 attempts for page ${params.CurrentPage}`);
         },
 
         async fetchDetails(listing) {
@@ -559,45 +459,42 @@ async function createBrowserApiSession(mapUrl) {
             const referenceNumber = listingReferenceNumber(listing);
             if (!propertyId || !referenceNumber) return null;
 
-            for (let attempt = 1; attempt <= 2; attempt++) {
-                for (const endpoint of DETAIL_ENDPOINTS) {
-                    const url = new URL(endpoint.url);
-                    url.searchParams.set('ApplicationId', endpoint.applicationId);
-                    url.searchParams.set('CultureId', '1');
-                    url.searchParams.set('PropertyID', String(propertyId));
-                    url.searchParams.set('ReferenceNumber', String(referenceNumber));
-                    url.searchParams.set('PreferedMeasurementUnit', '1');
-                    url.searchParams.set('HashCode', '0');
+            for (const endpoint of DETAIL_ENDPOINTS) {
+                const url = new URL(endpoint.url);
+                url.searchParams.set('ApplicationId', endpoint.applicationId);
+                url.searchParams.set('CultureId', '1');
+                url.searchParams.set('PropertyID', String(propertyId));
+                url.searchParams.set('ReferenceNumber', String(referenceNumber));
+                url.searchParams.set('PreferedMeasurementUnit', '1');
+                url.searchParams.set('HashCode', '0');
 
-                    try {
-                        const result = await page.evaluate(async (u) => {
-                            const r = await fetch(u, { credentials: 'include', headers: DETAIL_PAGE_HEADERS });
-                            return { ok: r.ok, status: r.status, text: await r.text() };
-                        }, url.href);
-
-                        if (result.ok) {
-                            const data = JSON.parse(result.text);
-                            const details = Array.isArray(data) ? data[0] : data;
-                            if (details?.Property || details?.Building || details?.Individual) return details;
-                        }
-                    } catch (error) {
-                        log.debug(`Page detail fetch failed for ${propertyId}: ${error.message}`);
+                try {
+                    const response = await context.request.get(url.href, {
+                        headers: { ...DETAIL_PAGE_HEADERS, referer: 'https://www.realtor.ca/' },
+                    });
+                    if (response.ok()) {
+                        const data = await response.json();
+                        const details = Array.isArray(data) ? data[0] : data;
+                        if (details?.Property || details?.Building || details?.Individual) return details;
                     }
-
-                    try {
-                        const response = await context.request.get(url.href, {
-                            headers: { ...DETAIL_PAGE_HEADERS, referer: 'https://www.realtor.ca/' },
-                        });
-                        if (response.ok()) {
-                            const data = await response.json();
-                            const details = Array.isArray(data) ? data[0] : data;
-                            if (details?.Property || details?.Building || details?.Individual) return details;
-                        }
-                    } catch (error) {
-                        log.debug(`Context detail fetch failed for ${propertyId}: ${error.message}`);
-                    }
+                } catch {
+                    log.debug(`Browser context detail fetch failed for ${propertyId}`);
                 }
-                if (attempt < 2) await page.waitForTimeout(jitter(500, 1200));
+
+                try {
+                    const result = await page.evaluate(async (u) => {
+                        const r = await fetch(u, { credentials: 'include', headers: DETAIL_PAGE_HEADERS });
+                        return { ok: r.ok, status: r.status, text: await r.text() };
+                    }, url.href);
+
+                    if (result.ok) {
+                        const data = JSON.parse(result.text);
+                        const details = Array.isArray(data) ? data[0] : data;
+                        if (details?.Property || details?.Building || details?.Individual) return details;
+                    }
+                } catch {
+                    log.debug(`Page evaluate detail fetch failed for ${propertyId}`);
+                }
             }
             return null;
         },
@@ -612,20 +509,58 @@ async function main() {
     const input = (await Actor.getInput()) || {};
     const resultsWanted = Math.max(Number(input.results_wanted || 20), 1);
     const maxPages = Math.max(Number(input.max_pages || 5), 1);
-    const { params, sourceUrl } = buildSearchParams(input);
-    const mapUrl = sourceUrl || buildMapUrl(params);
-
-    log.info('Starting Playwright browser session for Realtor.ca.');
-    const session = await createBrowserApiSession(mapUrl);
+    const { params } = buildSearchParams(input);
+    const mapUrl = buildMapUrl(params);
     let saved = 0;
     const seen = new Set();
+
+    let useBrowser = false;
+    let browserSession;
+
+    async function httpFetch(body) {
+        return fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
+            method: 'POST',
+            headers: HTTP_HEADERS,
+            body,
+        });
+    }
+
+    try {
+        log.info('Attempting direct HTTP API calls (no browser).');
+        const testBody = toFormBody({ ...params, CurrentPage: '1', RecordsPerPage: '10', MaximumResults: '10' }).toString();
+        const testResponse = await httpFetch(testBody);
+        if (!testResponse.ok) throw new Error(`HTTP ${testResponse.status}`);
+        const testData = await testResponse.json();
+        if (!Array.isArray(testData.Results)) throw new Error('Unexpected response format');
+        log.info('Direct HTTP API calls working. Browser not needed.');
+    } catch (err) {
+        log.info(`Direct HTTP failed (${err.message}). Falling back to browser session.`);
+        useBrowser = true;
+        log.info('Starting Playwright browser session for Realtor.ca.');
+        browserSession = await createBrowserApiSession(mapUrl);
+    }
 
     for (let page = 1; page <= maxPages && saved < resultsWanted; page++) {
         params.CurrentPage = String(page);
         params.MaximumResults = String(resultsWanted);
         params.RecordsPerPage = String(Math.min(Number(params.RecordsPerPage || 50), 100));
 
-        const data = await session.fetch(params);
+        let data;
+        if (useBrowser) {
+            data = await browserSession.fetch(params);
+        } else {
+            const body = toFormBody(params).toString();
+            const response = await httpFetch(body);
+            if (!response.ok) {
+                log.warning(`Search API returned HTTP ${response.status}. Falling back to browser.`);
+                useBrowser = true;
+                browserSession = await createBrowserApiSession(mapUrl);
+                data = await browserSession.fetch(params);
+            } else {
+                data = await response.json();
+            }
+        }
+
         const listings = Array.isArray(data.Results) ? data.Results : [];
 
         if (!listings.length) {
@@ -633,6 +568,7 @@ async function main() {
             break;
         }
 
+        // Map listings directly from search results (no detail API calls needed for basic fields + photos)
         const records = [];
         for (const listing of listings) {
             if (saved + records.length >= resultsWanted) break;
@@ -643,11 +579,7 @@ async function main() {
         }
 
         if (records.length) {
-            const detailResults = await Promise.allSettled(records.map((l) => session.fetchDetails(l)));
-            const mapped = records.map((listing, i) => {
-                const details = detailResults[i]?.status === 'fulfilled' ? detailResults[i].value : null;
-                return mapListing(listing, details);
-            });
+            const mapped = records.map((listing) => mapListing(listing));
             await Actor.pushData(mapped);
             saved += mapped.length;
             log.info(`Saved ${saved}/${resultsWanted} listings`);
@@ -657,18 +589,12 @@ async function main() {
         const totalPages = Number(paging.TotalPages || paging.TotalPagesCount || 0);
         if (totalPages && page >= totalPages) break;
         if (listings.length < Number(params.RecordsPerPage || 50)) break;
-
-        if (page < maxPages && saved < resultsWanted) {
-            await sleep(jitter(800, 2500));
-        }
     }
 
-    await session.close();
+    if (browserSession) await browserSession.close();
 
     if (saved === 0) {
-        throw new Error(
-            'No Realtor.ca listings were saved. Try a narrower Realtor.ca map URL and enable Apify Residential proxy.',
-        );
+        throw new Error('No Realtor.ca listings were saved. Try a narrower Realtor.ca map URL.');
     }
 
     log.info(`Finished. Saved ${saved} listings.`);
