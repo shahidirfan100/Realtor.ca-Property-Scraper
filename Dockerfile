@@ -1,23 +1,21 @@
 # Specify the base Docker image. You can read more about
 # the available images at https://crawlee.dev/docs/guides/docker-images
 # You can also use any other image from Docker Hub.
-FROM apify/actor-node-playwright-chrome:24-1.59.1
+# The image ships the Chromium build used by the stealth browser session.
+FROM apify/actor-node-playwright-chrome:24-1.63.0
 
-# Check preinstalled packages
-RUN npm ls crawlee apify puppeteer playwright
+# Check that the image provides the Chrome binary used by the stealth browser session.
+RUN google-chrome --version
 
 # Copy just package.json and package-lock.json
 # to speed up the build using Docker layer cache.
 COPY --chown=myuser:myuser package*.json Dockerfile ./
 
-# Check Playwright version is the same as the one from base image.
-RUN node check-playwright-version.mjs
-
-# Install NPM packages, skip optional and development dependencies to
-# keep the image small. Avoid logging too much and print the dependency
-# tree for debugging
-RUN npm --quiet set progress=false \
-    && npm install --omit=dev --omit=optional \
+# Install NPM packages. The base image ships its own node_modules, which is
+# removed first so npm builds a dependency tree that matches this Actor.
+RUN rm -rf node_modules \
+    && npm --quiet set progress=false \
+    && npm install --omit=dev --no-audit --no-fund \
     && echo "Installed NPM packages:" \
     && (npm list --omit=dev --all || true) \
     && echo "Node.js version:" \

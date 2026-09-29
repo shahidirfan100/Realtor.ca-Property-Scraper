@@ -1,12 +1,17 @@
 import { Actor, log } from 'apify';
-import { existsSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { chromium } from 'patchright';
 import { join } from 'path';
-import { chromium } from 'playwright';
 
-const DETAIL_ENDPOINTS = [
-    { url: 'https://api2.realtor.ca/Listing.svc/PropertyDetails', applicationId: '1' },
-    { url: 'https://api37.realtor.ca/Listing.svc/PropertyDetails', applicationId: '37' },
-];
+const SEARCH_ENDPOINT = 'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post';
+const DETAIL_ENDPOINT = 'https://api2.realtor.ca/Listing.svc/PropertyDetails';
+const MAP_PAGE_URL = 'https://www.realtor.ca/map';
+
+// Mirrors the `startUrl` default in .actor/input_schema.json. Used only when the
+// caller supplies no URL, keyword, or location.
+const DEFAULT_START_URL =
+    'https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD';
 
 const DEFAULT_BOUNDS = {
     LatitudeMax: '60.60705',
@@ -17,87 +22,239 @@ const DEFAULT_BOUNDS = {
 };
 
 const LOCATION_BOUNDS = {
-    toronto: { LatitudeMax: '43.85546', LongitudeMax: '-79.00248', LatitudeMin: '43.45830', LongitudeMin: '-79.63926', ZoomLevel: '11' },
-    'toronto, on': { LatitudeMax: '43.85546', LongitudeMax: '-79.00248', LatitudeMin: '43.45830', LongitudeMin: '-79.63926', ZoomLevel: '11' },
-    vancouver: { LatitudeMax: '49.36270', LongitudeMax: '-122.80178', LatitudeMin: '49.00231', LongitudeMin: '-123.38184', ZoomLevel: '11' },
-    'vancouver, bc': { LatitudeMax: '49.36270', LongitudeMax: '-122.80178', LatitudeMin: '49.00231', LongitudeMin: '-123.38184', ZoomLevel: '11' },
-    montreal: { LatitudeMax: '45.70479', LongitudeMax: '-73.36668', LatitudeMin: '45.40216', LongitudeMin: '-73.97210', ZoomLevel: '11' },
-    'montreal, qc': { LatitudeMax: '45.70479', LongitudeMax: '-73.36668', LatitudeMin: '45.40216', LongitudeMin: '-73.97210', ZoomLevel: '11' },
-    calgary: { LatitudeMax: '51.21215', LongitudeMax: '-113.78358', LatitudeMin: '50.84252', LongitudeMin: '-114.31576', ZoomLevel: '11' },
-    'calgary, ab': { LatitudeMax: '51.21215', LongitudeMax: '-113.78358', LatitudeMin: '50.84252', LongitudeMin: '-114.31576', ZoomLevel: '11' },
-    ottawa: { LatitudeMax: '45.53758', LongitudeMax: '-75.24658', LatitudeMin: '45.18104', LongitudeMin: '-76.35321', ZoomLevel: '10' },
-    'ottawa, on': { LatitudeMax: '45.53758', LongitudeMax: '-75.24658', LatitudeMin: '45.18104', LongitudeMin: '-76.35321', ZoomLevel: '10' },
-    edmonton: { LatitudeMax: '53.71695', LongitudeMax: '-113.18368', LatitudeMin: '53.39576', LongitudeMin: '-113.71305', ZoomLevel: '11' },
-    'edmonton, ab': { LatitudeMax: '53.71695', LongitudeMax: '-113.18368', LatitudeMin: '53.39576', LongitudeMin: '-113.71305', ZoomLevel: '11' },
+    toronto: {
+        LatitudeMax: '43.85546',
+        LongitudeMax: '-79.00248',
+        LatitudeMin: '43.45830',
+        LongitudeMin: '-79.63926',
+        ZoomLevel: '11',
+    },
+    'toronto, on': {
+        LatitudeMax: '43.85546',
+        LongitudeMax: '-79.00248',
+        LatitudeMin: '43.45830',
+        LongitudeMin: '-79.63926',
+        ZoomLevel: '11',
+    },
+    vancouver: {
+        LatitudeMax: '49.36270',
+        LongitudeMax: '-122.80178',
+        LatitudeMin: '49.00231',
+        LongitudeMin: '-123.38184',
+        ZoomLevel: '11',
+    },
+    'vancouver, bc': {
+        LatitudeMax: '49.36270',
+        LongitudeMax: '-122.80178',
+        LatitudeMin: '49.00231',
+        LongitudeMin: '-123.38184',
+        ZoomLevel: '11',
+    },
+    montreal: {
+        LatitudeMax: '45.70479',
+        LongitudeMax: '-73.36668',
+        LatitudeMin: '45.40216',
+        LongitudeMin: '-73.97210',
+        ZoomLevel: '11',
+    },
+    'montreal, qc': {
+        LatitudeMax: '45.70479',
+        LongitudeMax: '-73.36668',
+        LatitudeMin: '45.40216',
+        LongitudeMin: '-73.97210',
+        ZoomLevel: '11',
+    },
+    calgary: {
+        LatitudeMax: '51.21215',
+        LongitudeMax: '-113.78358',
+        LatitudeMin: '50.84252',
+        LongitudeMin: '-114.31576',
+        ZoomLevel: '11',
+    },
+    'calgary, ab': {
+        LatitudeMax: '51.21215',
+        LongitudeMax: '-113.78358',
+        LatitudeMin: '50.84252',
+        LongitudeMin: '-114.31576',
+        ZoomLevel: '11',
+    },
+    ottawa: {
+        LatitudeMax: '45.53758',
+        LongitudeMax: '-75.24658',
+        LatitudeMin: '45.18104',
+        LongitudeMin: '-76.35321',
+        ZoomLevel: '10',
+    },
+    'ottawa, on': {
+        LatitudeMax: '45.53758',
+        LongitudeMax: '-75.24658',
+        LatitudeMin: '45.18104',
+        LongitudeMin: '-76.35321',
+        ZoomLevel: '10',
+    },
+    edmonton: {
+        LatitudeMax: '53.71695',
+        LongitudeMax: '-113.18368',
+        LatitudeMin: '53.39576',
+        LongitudeMin: '-113.71305',
+        ZoomLevel: '11',
+    },
+    'edmonton, ab': {
+        LatitudeMax: '53.71695',
+        LongitudeMax: '-113.18368',
+        LatitudeMin: '53.39576',
+        LongitudeMin: '-113.71305',
+        ZoomLevel: '11',
+    },
 };
 
 const URL_PARAM_KEYS = new Set([
-    'ZoomLevel', 'Center', 'LatitudeMax', 'LongitudeMax', 'LatitudeMin', 'LongitudeMin',
-    'Sort', 'PropertyTypeGroupID', 'TransactionTypeId', 'PropertySearchTypeId', 'Currency',
-    'PriceMin', 'PriceMax', 'BedRange', 'BathRange', 'BuildingTypeId', 'ConstructionStyleId',
-    'OwnershipTypeGroupId', 'StoreyRange', 'Keywords', 'ListingIds', 'OpenHouse', 'OpenHouseStartDate', 'OpenHouseEndDate',
+    'ZoomLevel',
+    'Center',
+    'LatitudeMax',
+    'LongitudeMax',
+    'LatitudeMin',
+    'LongitudeMin',
+    'Sort',
+    'PropertyTypeGroupID',
+    'TransactionTypeId',
+    'PropertySearchTypeId',
+    'Currency',
+    'PriceMin',
+    'PriceMax',
+    'BedRange',
+    'BathRange',
+    'BuildingTypeId',
+    'ConstructionStyleId',
+    'OwnershipTypeGroupId',
+    'StoreyRange',
+    'Keywords',
+    'ListingIds',
+    'OpenHouse',
+    'OpenHouseStartDate',
+    'OpenHouseEndDate',
 ]);
 
-const DETAIL_PAGE_HEADERS = {
-    accept: 'application/json, text/javascript, */*; q=0.01',
-    'accept-language': 'en-CA,en;q=0.9',
-    'x-requested-with': 'XMLHttpRequest',
+// The search API is cross-origin, so the browser performs a preflight for any
+// custom header and rejects the request. Only the content type is sent, which
+// keeps the call a simple request, and the browser supplies origin, referer,
+// cookies, and fingerprint headers itself.
+const PAGE_FETCH_HEADERS = {
+    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
 };
 
-const HTTP_HEADERS = {
-    accept: 'application/json, text/javascript, */*; q=0.01',
-    'accept-language': 'en-CA,en;q=0.9',
-    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-    origin: 'https://www.realtor.ca',
-    referer: 'https://www.realtor.ca/',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    'x-requested-with': 'XMLHttpRequest',
-};
+const NAVIGATION_TIMEOUT_MS = 60000;
+const CLEARANCE_TIMEOUT_MS = 30000;
+const PAGE_ATTEMPTS = 2;
+const MAX_SESSION_RESTARTS = 3;
+const DETAIL_CONCURRENCY = 4;
+
+const DEFAULT_RESULTS_WANTED = 20;
+const DEFAULT_MAX_PAGES = 2;
+const DEFAULT_RECORDS_PER_PAGE = 50;
+const MAX_RECORDS_PER_PAGE = 100;
+const DOTNET_EPOCH_OFFSET_TICKS = 621355968000000000;
+const DOTNET_TICKS_PER_MILLISECOND = 10000;
+
+const CHALLENGE_PATTERN = /just a moment|checking your browser|security check|contrôle de sécurité|attention required/i;
+const BLOCK_PATTERN = /you have been blocked|access denied|accès refusé|error 1020/i;
 
 await Actor.init();
 
+function toPositiveInt(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return parsed;
+}
+
+function normalizeText(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Returns the first value that is not empty; used to prefer richer detail data. */
+function firstDefined(...values) {
+    return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function errorText(error) {
+    const message = error?.message ? String(error.message) : String(error);
+    return message.split('\n')[0].trim().slice(0, 200);
+}
+
 function firstInputUrl(input) {
-    if (input.startUrl) return input.startUrl;
-    if (input.url) return input.url;
-    if (Array.isArray(input.startUrls) && input.startUrls.length > 0) {
-        const first = input.startUrls[0];
-        return typeof first === 'string' ? first : first?.url;
+    const direct = normalizeText(input.startUrl) || normalizeText(input.url);
+    if (direct) return direct;
+    if (Array.isArray(input.startUrls)) {
+        for (const item of input.startUrls) {
+            const candidate = typeof item === 'string' ? item : item?.url;
+            if (normalizeText(candidate)) return normalizeText(candidate);
+        }
     }
     return '';
 }
 
 function parseRealtorUrl(rawUrl) {
-    if (!rawUrl) return {};
     const params = {};
+    if (!rawUrl) return params;
     try {
         const parsed = new URL(rawUrl);
         const hash = parsed.hash?.startsWith('#') ? parsed.hash.slice(1) : parsed.hash;
-        const hashParams = new URLSearchParams(hash || '');
-        for (const [key, value] of hashParams.entries()) {
+        for (const [key, value] of new URLSearchParams(hash || '').entries()) {
             if (URL_PARAM_KEYS.has(key) && value !== '') params[key] = value;
         }
         for (const [key, value] of parsed.searchParams.entries()) {
             if (URL_PARAM_KEYS.has(key) && value !== '') params[key] = value;
         }
     } catch (error) {
-        log.debug(`Could not parse start URL. Falling back to input filters. Error: ${error.message}`);
+        log.debug(
+            `Could not parse the supplied Realtor.ca URL; using input filters instead. Error: ${errorText(error)}`,
+        );
     }
     return params;
 }
 
-function buildSearchParams(input) {
-    const sourceUrl = firstInputUrl(input);
-    const urlParams = parseRealtorUrl(sourceUrl);
-    const locationKey = String(input.location || '').trim().toLowerCase();
-    const locationBounds = locationKey ? LOCATION_BOUNDS[locationKey] : null;
-    const resultsWanted = Math.max(Number(input.results_wanted || 20), 1);
-    const recordsPerPage = String(Math.min(Math.max(Number(input.records_per_page || 50), 1), 100, resultsWanted));
+/**
+ * Resolves the search mode. A caller-provided keyword or location wins over the
+ * URL, otherwise the supplied URL is used, and the documented default map area
+ * is used only when nothing else was provided.
+ */
+function resolveSearch(input) {
+    const resultsWanted = toPositiveInt(input.results_wanted, DEFAULT_RESULTS_WANTED);
+    const maxPages = toPositiveInt(input.max_pages, DEFAULT_MAX_PAGES);
+    const recordsPerPage = Math.min(
+        toPositiveInt(input.records_per_page, DEFAULT_RECORDS_PER_PAGE),
+        MAX_RECORDS_PER_PAGE,
+        resultsWanted,
+    );
+    const keyword = normalizeText(input.keyword);
+    const location = normalizeText(input.location);
+    const suppliedUrl = firstInputUrl(input);
+    const includeDetails = input.include_details !== false;
+    const locationBounds = location ? LOCATION_BOUNDS[location.toLowerCase()] : undefined;
+
+    let mode = 'url';
+    let sourceUrl = suppliedUrl || DEFAULT_START_URL;
+
+    if (keyword) {
+        mode = 'keyword';
+        sourceUrl = '';
+    } else if (location) {
+        mode = 'location';
+        sourceUrl = '';
+    } else if (!suppliedUrl) {
+        log.info('No URL, keyword, or location was provided; using the default Canada-wide map area.');
+    }
+
+    if (mode !== 'url' && location && !locationBounds) {
+        log.warning(`"${location}" is not a supported city shortcut; searching the default Canada-wide area instead.`);
+    }
+
     const params = {
         CultureId: '1',
         ApplicationId: '1',
         Version: '7.0',
         CurrentPage: '1',
-        RecordsPerPage: recordsPerPage,
+        RecordsPerPage: String(recordsPerPage),
         MaximumResults: String(resultsWanted),
         PropertySearchTypeId: '0',
         TransactionTypeId: '2',
@@ -107,19 +264,13 @@ function buildSearchParams(input) {
         IncludeHiddenListings: 'false',
         StoreyRange: '0-0',
         ...DEFAULT_BOUNDS,
-        ...locationBounds,
-        ...urlParams,
+        ...parseRealtorUrl(sourceUrl),
     };
-    if (input.keyword) params.Keywords = String(input.keyword).trim();
-    if (input.property_type_group_id) params.PropertyTypeGroupID = String(input.property_type_group_id);
-    if (input.transaction_type_id) params.TransactionTypeId = String(input.transaction_type_id);
-    if (input.property_search_type_id) params.PropertySearchTypeId = String(input.property_search_type_id);
-    if (input.price_min) params.PriceMin = String(input.price_min);
-    if (input.price_max) params.PriceMax = String(input.price_max);
-    if (input.bed_range) params.BedRange = String(input.bed_range);
-    if (input.bath_range) params.BathRange = String(input.bath_range);
-    if (input.sort) params.Sort = String(input.sort);
-    return { params, sourceUrl };
+
+    if (keyword) params.Keywords = keyword;
+    if (mode !== 'url' && locationBounds) Object.assign(params, locationBounds);
+
+    return { params, mode, resultsWanted, maxPages, recordsPerPage, includeDetails };
 }
 
 function toFormBody(params) {
@@ -137,7 +288,7 @@ function buildMapUrl(params) {
             hash.set(key, String(params[key]));
         }
     }
-    return `https://www.realtor.ca/map#${hash.toString()}`;
+    return `${MAP_PAGE_URL}#${hash.toString()}`;
 }
 
 function cleanValue(value) {
@@ -159,6 +310,41 @@ function cleanValue(value) {
 
 function cleanRecord(record) {
     return cleanValue(record) || {};
+}
+
+/** Prefers the detail collection when it has entries, otherwise the search collection. */
+function pickCollection(preferred, fallback) {
+    if (Array.isArray(preferred) && preferred.length) return preferred;
+    return Array.isArray(fallback) ? fallback : [];
+}
+
+/** Realtor.ca occasionally returns numeric values as strings. */
+function toNumberIfNumeric(value) {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return value;
+    return Number(trimmed);
+}
+
+/** Realtor.ca returns some timestamps as .NET ticks; convert them to ISO strings. */
+function toIsoTimestamp(value) {
+    const ticks = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : value;
+    if (typeof ticks !== 'number' || !Number.isFinite(ticks) || ticks <= DOTNET_EPOCH_OFFSET_TICKS) return value;
+    try {
+        return new Date((ticks - DOTNET_EPOCH_OFFSET_TICKS) / DOTNET_TICKS_PER_MILLISECOND).toISOString();
+    } catch {
+        return value;
+    }
+}
+
+/** Address text uses a pipe between the street line and the city line. */
+function splitAddressText(addressText) {
+    if (typeof addressText !== 'string' || !addressText.includes('|')) return { full: addressText, street: undefined };
+    const [street, ...rest] = addressText
+        .split('|')
+        .map((part) => part.trim())
+        .filter(Boolean);
+    return { full: [street, ...rest].join(', '), street };
 }
 
 function absoluteRealtorUrl(pathOrUrl) {
@@ -183,57 +369,51 @@ function pickPhotoUrl(photo) {
 function photoUrls(property = {}) {
     const photos = toPhotoArray(property);
     if (!photos.length) return undefined;
-    const urls = photos.map(pickPhotoUrl).filter(Boolean);
+    const ordered = [...photos].sort((a, b) => Number(a.SequenceId || 0) - Number(b.SequenceId || 0));
+    const urls = ordered.map(pickPhotoUrl).filter(Boolean);
     return [...new Set(urls.map(absoluteRealtorUrl).filter(Boolean))];
 }
 
 function firstPhotoUrl(property = {}) {
-    const photo = toPhotoArray(property)[0];
-    if (!photo) return undefined;
-    return absoluteRealtorUrl(pickPhotoUrl(photo));
-}
-
-function listingPropertyId(listing = {}) {
-    const detailsPath = listing.RelativeDetailsURL || listing.Property?.RelativeDetailsURL || listing.AlternateURL?.DetailsLink;
-    const pathId = detailsPath?.match(/\/(?:real-estate|immobilier)\/(\d+)\//i)?.[1];
-    return listing.Id || listing.Property?.PropertyID || pathId;
-}
-
-function listingReferenceNumber(listing = {}) {
-    return listing.MlsNumber || listing.Property?.MlsNumber;
+    const urls = photoUrls(property);
+    return urls?.[0];
 }
 
 function mapListing(listing, details = null) {
     const property = listing.Property || {};
     const detailProperty = details?.Property || {};
-    const address = property.Address || {};
-    const building = listing.Building || property.Building || {};
-    const land = listing.Land || property.Land || {};
-    const business = listing.Business || property.Business || {};
+    const address = property.Address || detailProperty.Address || {};
+    const building = details?.Building || listing.Building || property.Building || {};
+    const land = details?.Land || listing.Land || property.Land || {};
+    const business = details?.Business || listing.Business || property.Business || {};
     const alternateUrl = listing.AlternateURL || property.AlternateURL || {};
-    const agents = Array.isArray(listing.Individual) ? listing.Individual : [];
-    const offices = Array.isArray(listing.Office) ? listing.Office : [];
-    const detailsPath = alternateUrl.DetailsLink || listing.RelativeDetailsURL || property.RelativeDetailsURL;
+    const agents = pickCollection(details?.Individual, listing.Individual);
+    const offices = pickCollection(details?.Office, listing.Office);
+    const detailsPath = listing.RelativeDetailsURL || property.RelativeDetailsURL || alternateUrl.DetailsLink;
+    const updatedDate = firstDefined(details?.InsertedDateUTC, listing.InsertedDateUTC, listing.TimeOnRealtor);
+    const addressParts = splitAddressText(address.AddressText);
 
     return cleanRecord({
-        listing_id: listing.Id || property.PropertyID,
-        mls_number: listing.MlsNumber || property.MlsNumber,
+        listing_id: firstDefined(listing.Id, property.PropertyID),
+        mls_number: firstDefined(listing.MlsNumber, property.MlsNumber),
         url: absoluteRealtorUrl(detailsPath),
         relative_url: detailsPath,
-        price: property.Price,
-        price_unformatted: property.PriceUnformattedValue,
-        property_type: property.Type,
-        transaction_type: property.TransactionType,
-        ownership_type: property.OwnershipType,
-        address: address.AddressText,
-        street_address: address.StreetAddress,
+        price: firstDefined(property.Price, detailProperty.Price),
+        price_unformatted: toNumberIfNumeric(
+            firstDefined(property.PriceUnformattedValue, detailProperty.PriceUnformattedValue),
+        ),
+        property_type: firstDefined(property.Type, detailProperty.Type),
+        transaction_type: firstDefined(property.TransactionType, detailProperty.TransactionType),
+        ownership_type: firstDefined(property.OwnershipType, detailProperty.OwnershipType),
+        address: addressParts.full,
+        street_address: address.StreetAddress || addressParts.street,
         city: address.City,
-        province: address.Province || listing.ProvinceName,
-        postal_code: address.PostalCode || listing.PostalCode,
-        latitude: address.Latitude,
-        longitude: address.Longitude,
-        bedrooms: building.Bedrooms || property.Bedrooms,
-        bathrooms: building.BathroomTotal || property.BathroomTotal,
+        province: firstDefined(address.Province, listing.ProvinceName),
+        postal_code: firstDefined(address.PostalCode, listing.PostalCode),
+        latitude: toNumberIfNumeric(address.Latitude),
+        longitude: toNumberIfNumeric(address.Longitude),
+        bedrooms: firstDefined(building.Bedrooms, property.Bedrooms),
+        bathrooms: firstDefined(building.BathroomTotal, property.BathroomTotal),
         half_bathrooms: building.HalfBathTotal,
         size_interior: building.SizeInterior,
         stories_total: building.StoriesTotal,
@@ -242,11 +422,11 @@ function mapListing(listing, details = null) {
         basement_type: building.BasementType,
         constructed_date: building.ConstructedDate,
         land_size: land.SizeTotal,
-        parking_type: property.ParkingType,
-        parking_spaces: property.ParkingSpaceTotal,
-        features: property.Features,
-        amenities_nearby: property.AmmenitiesNearBy,
-        public_remarks: listing.PublicRemarks || property.PublicRemarks,
+        parking_type: firstDefined(property.ParkingType, detailProperty.ParkingType),
+        parking_spaces: firstDefined(property.ParkingSpaceTotal, detailProperty.ParkingSpaceTotal),
+        features: firstDefined(detailProperty.Features, property.Features),
+        amenities_nearby: firstDefined(property.AmmenitiesNearBy, detailProperty.AmmenitiesNearBy),
+        public_remarks: firstDefined(details?.PublicRemarks, listing.PublicRemarks, property.PublicRemarks),
         photo_url: firstPhotoUrl(detailProperty) || firstPhotoUrl(property),
         photo_urls: photoUrls(detailProperty) || photoUrls(property),
         agents: agents.map((agent) =>
@@ -268,337 +448,406 @@ function mapListing(listing, details = null) {
             }),
         ),
         business_type: business.BusinessType,
-        listed_date: listing.ListedTime || property.ListedTime,
-        updated_date: listing.InsertedDateUTC || listing.TimeOnRealtor,
+        listed_date: firstDefined(listing.ListedTime, details?.ListedTime, property.ListedTime),
+        updated_date: toIsoTimestamp(updatedDate),
     });
 }
 
-function findBrowserPath() {
-    const isWin = process.platform === 'win32';
-
-    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
-        const pwDir = process.env.PLAYWRIGHT_BROWSERS_PATH;
-        const candidates = [
-            join(pwDir, 'chromium_headless_shell-1217', isWin ? 'chrome-headless-shell-win64\\chrome-headless-shell.exe' : 'chrome-headless-shell-linux64/chrome-headless-shell'),
-            join(pwDir, 'chromium-1217', isWin ? 'chrome-win64\\chrome.exe' : 'chrome-linux64/chrome'),
-        ];
-        for (const c of candidates) {
-            if (existsSync(c)) return c;
+/** Runs an async worker over items with a bounded number of parallel workers. */
+async function mapWithConcurrency(items, limit, worker) {
+    const results = new Array(items.length);
+    const queue = items.map((item, index) => ({ item, index }));
+    const runners = Array.from({ length: Math.max(Math.min(limit, queue.length), 0) }, async () => {
+        let entry = queue.shift();
+        while (entry) {
+            results[entry.index] = await worker(entry.item);
+            entry = queue.shift();
         }
-    }
+    });
+    await Promise.all(runners);
+    return results;
+}
 
+function browserDirs(root) {
+    let entries;
+    try {
+        entries = readdirSync(root, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+    const revisions = entries
+        .filter((entry) => entry.isDirectory() && /^chromium(_headless_shell)?-\d+$/.test(entry.name))
+        .map((entry) => entry.name)
+        .sort((a, b) => Number.parseInt(b.split('-').pop(), 10) - Number.parseInt(a.split('-').pop(), 10));
+    const executables = [];
+    for (const revision of revisions) {
+        const base = join(root, revision);
+        executables.push(
+            join(base, 'chrome-linux64', 'chrome'),
+            join(base, 'chrome-linux', 'chrome'),
+            join(base, 'chrome-win64', 'chrome.exe'),
+            join(base, 'chrome-win', 'chrome.exe'),
+            join(base, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+            join(base, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
+        );
+    }
+    return executables;
+}
+
+function findChromiumExecutable() {
+    const searchRoots = [];
+    if (process.env.PLAYWRIGHT_BROWSERS_PATH) searchRoots.push(process.env.PLAYWRIGHT_BROWSERS_PATH);
     const home = process.env.USERPROFILE || process.env.HOME || '';
-    const localPwDir = join(home, 'AppData', 'Local', 'ms-playwright');
-    const localCandidates = [
-        join(localPwDir, 'chromium_headless_shell-1217', 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
-        join(localPwDir, 'chromium-1217', 'chrome-win64', 'chrome.exe'),
-        join(localPwDir, 'chromium-1208', 'chrome-win64', 'chrome.exe'),
-    ];
-    for (const c of localCandidates) {
-        if (existsSync(c)) return c;
+    if (home) {
+        searchRoots.push(join(home, 'AppData', 'Local', 'ms-playwright'), join(home, '.cache', 'ms-playwright'));
     }
 
-    const linuxCandidates = [
-        '/pw-browsers/chromium-1217/chrome-linux64/chrome',
-        '/pw-browsers/chromium_headless_shell-1217/chrome-headless-shell-linux64/chrome-headless-shell',
+    const candidates = [
+        ...searchRoots.filter((root) => existsSync(root)).flatMap(browserDirs),
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
         '/usr/bin/chromium',
     ];
-    for (const c of linuxCandidates) {
-        if (existsSync(c)) return c;
-    }
-
-    return null;
+    return candidates.find((candidate) => existsSync(candidate)) || null;
 }
 
-async function createBrowserApiSession(mapUrl) {
-    const execPath = findBrowserPath();
-    const launchOptions = execPath ? { headless: true, executablePath: execPath } : { headless: true };
-
-    const browser = await chromium.launch(launchOptions);
-    const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        viewport: { width: 1536, height: 864 },
-        locale: 'en-CA',
-        timezoneId: 'America/Toronto',
-    });
-    const page = await context.newPage();
-
-    const responsesByPage = new Map();
-    let sessionReady = false;
-
-    function responseCacheKey(pageNumber, recordsPerPage) {
-        return `${pageNumber}:${recordsPerPage || ''}`;
-    }
-
-    async function waitForCachedPage(pageNumber, recordsPerPage, timeoutMs = 15000) {
-        const key = responseCacheKey(pageNumber, recordsPerPage);
-        const started = Date.now();
-        while (Date.now() - started < timeoutMs) {
-            if (responsesByPage.has(key)) return responsesByPage.get(key);
-            await page.waitForTimeout(300);
-        }
+function browserProxySettings(proxyUrl) {
+    if (!proxyUrl) return undefined;
+    try {
+        const parsed = new URL(proxyUrl);
+        const settings = { server: `${parsed.protocol}//${parsed.host}` };
+        if (parsed.username) settings.username = decodeURIComponent(parsed.username);
+        if (parsed.password) settings.password = decodeURIComponent(parsed.password);
+        return settings;
+    } catch (error) {
+        log.debug(`Could not parse the proxy URL for the browser session: ${errorText(error)}`);
         return undefined;
     }
+}
 
-    page.on('response', async (response) => {
-        if (!response.url().includes('/Listing.svc/AsyncPropertySearch_Post') || !response.ok()) return;
+/**
+ * Stealth launch order: real Chrome first, then the patched Chromium build, and
+ * headful before headless. Headful profiles are attempted even without a known
+ * display, because the Apify Chrome image runs Xvfb and a failed launch only
+ * steps to the next profile. No fingerprint headers or user agent are injected,
+ * so the browser profile stays internally consistent.
+ */
+function buildLaunchStrategies(proxy) {
+    const executablePath = findChromiumExecutable();
+    const strategies = [];
+    const add = (name, options) => strategies.push({ name, options: { ...options, ...(proxy ? { proxy } : {}) } });
+
+    add('Chrome (headful)', { channel: 'chrome', headless: false, viewport: null });
+    add('Chrome (headless)', { channel: 'chrome', headless: true, viewport: null });
+    if (executablePath) {
+        add('patched Chromium (headful)', { executablePath, headless: false, viewport: null });
+        add('patched Chromium (headless)', { executablePath, headless: true, viewport: null });
+    } else {
+        add('patched Chromium (headful)', { headless: false, viewport: null });
+        add('patched Chromium (headless)', { headless: true, viewport: null });
+    }
+    return strategies;
+}
+
+async function launchStealthContext(profileDir, proxy) {
+    let lastError;
+    for (const strategy of buildLaunchStrategies(proxy)) {
         try {
-            const postData = response.request().postData() || '';
-            const requestParams = new URLSearchParams(postData);
-            const pageNumber = requestParams.get('CurrentPage') || '1';
-            const recordsPerPage = requestParams.get('RecordsPerPage') || '';
-            const data = await response.json();
-            if (Array.isArray(data.Results)) {
-                responsesByPage.set(responseCacheKey(pageNumber, recordsPerPage), data);
-                sessionReady = true;
-            }
+            const context = await chromium.launchPersistentContext(profileDir, strategy.options);
+            log.info(`Browser session started with the ${strategy.name} profile.`);
+            return context;
         } catch (error) {
-            log.debug(`Could not capture browser API response: ${error.message}`);
+            lastError = error;
+            log.debug(`Browser launch profile "${strategy.name}" is unavailable: ${errorText(error)}`);
         }
-    });
+    }
+    throw new Error(`no browser profile could be started (${errorText(lastError)})`);
+}
 
-    log.info('Opening Realtor.ca map to establish browser API session.');
-    await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+async function waitForClearance(page) {
+    const started = Date.now();
+    while (Date.now() - started < CLEARANCE_TIMEOUT_MS) {
+        const state = await page
+            .evaluate(() => ({ title: document.title, text: (document.body?.innerText || '').slice(0, 400) }))
+            .catch(() => null);
+        if (state) {
+            const sample = `${state.title}\n${state.text}`;
+            if (BLOCK_PATTERN.test(sample)) return 'blocked';
+            if (state.title && !CHALLENGE_PATTERN.test(sample)) return 'ready';
+        }
+        await page.waitForTimeout(500);
+    }
+    return 'timeout';
+}
 
-    const dismiss = page.getByRole('link', { name: 'Dismiss' });
-    if (await dismiss.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await dismiss.click({ timeout: 5000 }).catch(() => {});
+/**
+ * Opens a stealth browser session and fetches the internal Realtor.ca search API
+ * from inside that session, using the same request the Realtor.ca map page makes.
+ */
+async function createStealthSession({ mapUrl, proxyUrl }) {
+    const proxy = browserProxySettings(proxyUrl);
+    const profileDir = mkdtempSync(join(tmpdir(), 'realtor-profile-'));
+    const context = await launchStealthContext(profileDir, proxy);
+    const page = context.pages()[0] || (await context.newPage());
+
+    async function open() {
+        log.info('Opening Realtor.ca in a stealth browser session to establish API access.');
+        await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+
+        const clearance = await waitForClearance(page);
+        if (clearance === 'blocked') {
+            log.warning('Realtor.ca served a bot-protection block page to this browser session.');
+        } else if (clearance === 'timeout') {
+            log.warning('Realtor.ca bot protection had not cleared yet; continuing with the API request.');
+        }
+
+        const dismiss = page.getByRole('link', { name: 'Dismiss' });
+        if (await dismiss.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await dismiss.click({ timeout: 5000 }).catch(() => {});
+        }
     }
 
-    if (!sessionReady) {
-        await waitForCachedPage('1', undefined, 15000);
-    }
-    if (!sessionReady) {
-        log.info('No API response captured after initial load; forcing API call.');
-        const body = toFormBody({
-            ...Object.fromEntries(new URLSearchParams()),
-            CurrentPage: '1',
-            RecordsPerPage: '10',
-            MaximumResults: '10',
-        }).toString();
-        await page.evaluate(async (b) => {
-            await fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
-                method: 'POST',
-                headers: {
-                    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    origin: 'https://www.realtor.ca',
-                    referer: 'https://www.realtor.ca/',
-                },
-                body: b,
-            });
-        }, body);
-        await waitForCachedPage('1', undefined, 10000);
-    }
+    async function fetchSearch(params) {
+        const body = toFormBody(params).toString();
+        let lastError = 'the browser session request failed';
 
-    return {
-        async fetch(params) {
-            const pageNumber = String(params.CurrentPage || '1');
-            const recordsPerPage = String(params.RecordsPerPage || '');
-            const key = responseCacheKey(pageNumber, recordsPerPage);
-            if (responsesByPage.has(key)) return responsesByPage.get(key);
+        for (let attempt = 1; attempt <= PAGE_ATTEMPTS; attempt++) {
+            try {
+                const result = await page.evaluate(
+                    async ({ url, payload, headers }) => {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers,
+                            body: payload,
+                            credentials: 'include',
+                        });
+                        return { ok: response.ok, status: response.status, text: await response.text() };
+                    },
+                    { url: SEARCH_ENDPOINT, payload: body, headers: PAGE_FETCH_HEADERS },
+                );
 
-            const captured = await waitForCachedPage(pageNumber, recordsPerPage);
-            if (captured) return captured;
-
-            const body = toFormBody(params).toString();
-            for (let attempt = 1; attempt <= 2; attempt++) {
-                try {
-                    const apiResponse = await context.request.post(
-                        'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post',
-                        {
-                            headers: {
-                                'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                                origin: 'https://www.realtor.ca',
-                                referer: 'https://www.realtor.ca/',
-                            },
-                            data: body,
-                        },
-                    );
-                    if (!apiResponse.ok()) {
-                        const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 3000);
-                        if (delayed) return delayed;
-                        throw new Error(`HTTP ${apiResponse.status()}`);
-                    }
-                    const data = await apiResponse.json();
-                    if (Array.isArray(data.Results)) {
-                        responsesByPage.set(key, data);
-                        sessionReady = true;
-                    }
-                    return data;
-                } catch {
-                    const delayed = await waitForCachedPage(pageNumber, recordsPerPage, 2000);
-                    if (delayed) return delayed;
-                    if (attempt === 2) {
-                        const result = await page.evaluate(async (b) => {
-                            const r = await fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
-                                method: 'POST',
-                                headers: {
-                                    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                                    origin: 'https://www.realtor.ca',
-                                    referer: 'https://www.realtor.ca/',
-                                },
-                                body: b,
-                            });
-                            return { ok: r.ok, status: r.status, text: await r.text() };
-                        }, body);
-
-                        if (!result.ok) throw new Error(`HTTP ${result.status}: ${result.text.slice(0, 200)}`);
+                if (result.ok) {
+                    try {
                         const data = JSON.parse(result.text);
-                        if (Array.isArray(data.Results)) responsesByPage.set(key, data);
-                        return data;
+                        if (Array.isArray(data?.Results)) return { data };
+                        return { blocked: true, error: 'the response did not contain a property result list' };
+                    } catch (error) {
+                        return { blocked: true, error: `invalid JSON response: ${errorText(error)}` };
                     }
                 }
+
+                lastError = `HTTP ${result.status}`;
+                if (result.status !== 429 && result.status < 500) break;
+            } catch (error) {
+                lastError = `in-page request failed: ${errorText(error)}`;
             }
-            throw new Error(`Failed to fetch search results after 2 attempts for page ${params.CurrentPage}`);
-        },
 
-        async fetchDetails(listing) {
-            const propertyId = listingPropertyId(listing);
-            const referenceNumber = listingReferenceNumber(listing);
-            if (!propertyId || !referenceNumber) return null;
+            if (attempt < PAGE_ATTEMPTS) await page.waitForTimeout(1000 * attempt);
+        }
 
-            for (const endpoint of DETAIL_ENDPOINTS) {
-                const url = new URL(endpoint.url);
-                url.searchParams.set('ApplicationId', endpoint.applicationId);
-                url.searchParams.set('CultureId', '1');
-                url.searchParams.set('PropertyID', String(propertyId));
-                url.searchParams.set('ReferenceNumber', String(referenceNumber));
-                url.searchParams.set('PreferedMeasurementUnit', '1');
-                url.searchParams.set('HashCode', '0');
+        return { blocked: true, error: lastError };
+    }
 
-                try {
-                    const response = await context.request.get(url.href, {
-                        headers: { ...DETAIL_PAGE_HEADERS, referer: 'https://www.realtor.ca/' },
-                    });
-                    if (response.ok()) {
-                        const data = await response.json();
-                        const details = Array.isArray(data) ? data[0] : data;
-                        if (details?.Property || details?.Building || details?.Individual) return details;
-                    }
-                } catch {
-                    log.debug(`Browser context detail fetch failed for ${propertyId}`);
-                }
+    async function fetchDetails(listing) {
+        const propertyId = listing.Id;
+        const referenceNumber = listing.MlsNumber;
+        if (!propertyId || !referenceNumber) return null;
 
-                try {
-                    const result = await page.evaluate(async (u) => {
-                        const r = await fetch(u, { credentials: 'include', headers: DETAIL_PAGE_HEADERS });
-                        return { ok: r.ok, status: r.status, text: await r.text() };
-                    }, url.href);
+        const url = new URL(DETAIL_ENDPOINT);
+        url.searchParams.set('ApplicationId', '1');
+        url.searchParams.set('CultureId', '1');
+        url.searchParams.set('PropertyID', String(propertyId));
+        url.searchParams.set('ReferenceNumber', String(referenceNumber));
+        url.searchParams.set('PreferedMeasurementUnit', '1');
+        url.searchParams.set('HashCode', '0');
 
-                    if (result.ok) {
-                        const data = JSON.parse(result.text);
-                        const details = Array.isArray(data) ? data[0] : data;
-                        if (details?.Property || details?.Building || details?.Individual) return details;
-                    }
-                } catch {
-                    log.debug(`Page evaluate detail fetch failed for ${propertyId}`);
-                }
+        try {
+            const result = await page.evaluate(async (endpoint) => {
+                const response = await fetch(endpoint, { credentials: 'include' });
+                return { ok: response.ok, status: response.status, text: await response.text() };
+            }, url.href);
+
+            if (!result.ok) {
+                log.debug(`Detail record for ${propertyId} returned HTTP ${result.status}.`);
+                return null;
             }
+
+            const parsed = JSON.parse(result.text);
+            const details = Array.isArray(parsed) ? parsed[0] : parsed;
+            if (!details?.Property && !details?.Building) return null;
+            return details;
+        } catch (error) {
+            log.debug(`Detail record for ${propertyId} could not be loaded: ${errorText(error)}`);
             return null;
-        },
+        }
+    }
 
-        async close() {
-            await browser.close();
-        },
-    };
+    async function close() {
+        await context
+            .close()
+            .catch((error) => log.debug(`Could not close the browser session cleanly: ${errorText(error)}`));
+        try {
+            rmSync(profileDir, { recursive: true, force: true });
+        } catch (error) {
+            log.debug(`Could not remove the temporary browser profile: ${errorText(error)}`);
+        }
+    }
+
+    return { open, fetchSearch, fetchDetails, close };
 }
 
 async function main() {
     const input = (await Actor.getInput()) || {};
-    const resultsWanted = Math.max(Number(input.results_wanted || 20), 1);
-    const maxPages = Math.max(Number(input.max_pages || 5), 1);
-    const { params } = buildSearchParams(input);
-    const mapUrl = buildMapUrl(params);
+    const { params, mode, resultsWanted, maxPages, recordsPerPage, includeDetails } = resolveSearch(input);
+
+    const rawProxyConfiguration = input.proxyConfiguration;
+    const hasCustomProxyUrls =
+        Array.isArray(rawProxyConfiguration?.proxyUrls) && rawProxyConfiguration.proxyUrls.length > 0;
+    const wantsApifyProxy =
+        rawProxyConfiguration?.useApifyProxy === true ||
+        (Array.isArray(rawProxyConfiguration?.apifyProxyGroups) && rawProxyConfiguration.apifyProxyGroups.length > 0);
+    let proxyConfiguration;
+    if (hasCustomProxyUrls) {
+        proxyConfiguration = await Actor.createProxyConfiguration(rawProxyConfiguration);
+    } else if (wantsApifyProxy) {
+        if (Actor.isAtHome() || process.env.APIFY_PROXY_PASSWORD) {
+            proxyConfiguration = await Actor.createProxyConfiguration(rawProxyConfiguration);
+        } else {
+            log.warning(
+                'Apify Proxy settings were provided, but Apify Proxy requires a cloud run or proxy credentials. Continuing without a proxy.',
+            );
+        }
+    }
+
+    // One proxy session and one browser profile are reused for the whole flow and
+    // replaced together when the target blocks the session.
+    const newSessionId = () => `realtor_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const newProxyUrl = async () => (proxyConfiguration ? proxyConfiguration.newUrl(newSessionId()) : undefined);
+
+    const pageParams = (page) => ({
+        ...params,
+        CurrentPage: String(page),
+        RecordsPerPage: String(recordsPerPage),
+        MaximumResults: String(resultsWanted),
+    });
+
+    let session;
+    let sessionRestarts = 0;
+
+    async function openSession() {
+        if (session) await session.close();
+        session = await createStealthSession({ mapUrl: buildMapUrl(params), proxyUrl: await newProxyUrl() });
+        await session.open();
+    }
+
+    async function restartSession() {
+        if (sessionRestarts >= MAX_SESSION_RESTARTS) return false;
+        sessionRestarts++;
+        log.warning(
+            `Rotating the proxy session and browser profile (attempt ${sessionRestarts}/${MAX_SESSION_RESTARTS}).`,
+        );
+        await openSession();
+        return true;
+    }
+
+    async function fetchPage(page) {
+        let result = await session.fetchSearch(pageParams(page));
+        if (!result.data && (await restartSession())) {
+            result = await session.fetchSearch(pageParams(page));
+        }
+        return result;
+    }
+
+    log.info(
+        `Starting Realtor.ca extraction in ${mode} mode. Results wanted: ${resultsWanted}, max pages: ${maxPages}, records per page: ${recordsPerPage}, detail records: ${includeDetails ? 'enabled' : 'disabled'}.`,
+    );
+
     let saved = 0;
+    let pagesProcessed = 0;
+    let stopReason = 'reached the requested result count';
     const seen = new Set();
 
-    let useBrowser = false;
-    let browserSession;
-
-    async function httpFetch(body) {
-        return fetch('https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post', {
-            method: 'POST',
-            headers: HTTP_HEADERS,
-            body,
-        });
-    }
-
     try {
-        log.info('Attempting direct HTTP API calls (no browser).');
-        const testBody = toFormBody({ ...params, CurrentPage: '1', RecordsPerPage: '10', MaximumResults: '10' }).toString();
-        const testResponse = await httpFetch(testBody);
-        if (!testResponse.ok) throw new Error(`HTTP ${testResponse.status}`);
-        const testData = await testResponse.json();
-        if (!Array.isArray(testData.Results)) throw new Error('Unexpected response format');
-        log.info('Direct HTTP API calls working. Browser not needed.');
-    } catch (err) {
-        log.info(`Direct HTTP failed (${err.message}). Falling back to browser session.`);
-        useBrowser = true;
-        log.info('Starting Playwright browser session for Realtor.ca.');
-        browserSession = await createBrowserApiSession(mapUrl);
-    }
+        await openSession();
 
-    for (let page = 1; page <= maxPages && saved < resultsWanted; page++) {
-        params.CurrentPage = String(page);
-        params.MaximumResults = String(resultsWanted);
-        params.RecordsPerPage = String(Math.min(Number(params.RecordsPerPage || 50), 100));
+        for (let page = 1; page <= maxPages && saved < resultsWanted; page++) {
+            const result = await fetchPage(page);
 
-        let data;
-        if (useBrowser) {
-            data = await browserSession.fetch(params);
-        } else {
-            const body = toFormBody(params).toString();
-            const response = await httpFetch(body);
-            if (!response.ok) {
-                log.warning(`Search API returned HTTP ${response.status}. Falling back to browser.`);
-                useBrowser = true;
-                browserSession = await createBrowserApiSession(mapUrl);
-                data = await browserSession.fetch(params);
-            } else {
-                data = await response.json();
+            if (!result.data) {
+                stopReason = `stopped at page ${page}: ${result.error}`;
+                if (page === 1) throw new Error(`Realtor.ca search could not be reached (${result.error}).`);
+                log.warning(`Stopping pagination. ${result.error}`);
+                break;
             }
+
+            pagesProcessed = page;
+            const listings = result.data.Results;
+
+            if (!listings.length) {
+                stopReason = 'no more listings were returned';
+                break;
+            }
+
+            const batch = [];
+            for (const listing of listings) {
+                if (saved + batch.length >= resultsWanted) break;
+                const key = listing.MlsNumber || listing.Id || JSON.stringify(listing).slice(0, 200);
+                if (seen.has(key)) continue;
+                seen.add(key);
+                batch.push(listing);
+            }
+
+            if (batch.length) {
+                let detailFailures = 0;
+                const activeSession = session;
+                const details = includeDetails
+                    ? await mapWithConcurrency(batch, DETAIL_CONCURRENCY, async (listing) => {
+                          const detail = await activeSession.fetchDetails(listing);
+                          if (!detail) detailFailures += 1;
+                          return detail;
+                      })
+                    : batch.map(() => null);
+
+                await Actor.pushData(batch.map((listing, index) => mapListing(listing, details[index])));
+                saved += batch.length;
+                if (detailFailures) {
+                    log.warning(
+                        `Saved ${saved}/${resultsWanted} listings. ${detailFailures} of ${batch.length} detail records could not be loaded and were saved with search data only.`,
+                    );
+                } else {
+                    log.info(`Saved ${saved}/${resultsWanted} listings.`);
+                }
+            }
+
+            const paging = result.data.Paging || {};
+            const totalPages = Number(paging.TotalPages || paging.TotalPagesCount || 0);
+            if (totalPages && page >= totalPages) {
+                stopReason = 'reached the last available result page';
+                break;
+            }
+            if (listings.length < recordsPerPage) {
+                stopReason = 'the last page contained fewer listings than requested';
+                break;
+            }
+            if (page === maxPages) stopReason = 'reached the max pages limit';
         }
-
-        const listings = Array.isArray(data.Results) ? data.Results : [];
-
-        if (!listings.length) {
-            log.info(`No listings returned on page ${page}. Stopping.`);
-            break;
-        }
-
-        // Map listings directly from search results (no detail API calls needed for basic fields + photos)
-        const records = [];
-        for (const listing of listings) {
-            if (saved + records.length >= resultsWanted) break;
-            const key = listing.MlsNumber || listing.Id || JSON.stringify(listing).slice(0, 200);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            records.push(listing);
-        }
-
-        if (records.length) {
-            const mapped = records.map((listing) => mapListing(listing));
-            await Actor.pushData(mapped);
-            saved += mapped.length;
-            log.info(`Saved ${saved}/${resultsWanted} listings`);
-        }
-
-        const paging = data.Paging || {};
-        const totalPages = Number(paging.TotalPages || paging.TotalPagesCount || 0);
-        if (totalPages && page >= totalPages) break;
-        if (listings.length < Number(params.RecordsPerPage || 50)) break;
+    } finally {
+        if (session) await session.close();
     }
-
-    if (browserSession) await browserSession.close();
 
     if (saved === 0) {
-        throw new Error('No Realtor.ca listings were saved. Try a narrower Realtor.ca map URL.');
+        throw new Error(
+            `No Realtor.ca listings were saved (${stopReason}). Try a wider Realtor.ca map URL or different filters.`,
+        );
     }
 
-    log.info(`Finished. Saved ${saved} listings.`);
+    log.info(`Finished. Saved ${saved} listings across ${pagesProcessed} page(s). Stop reason: ${stopReason}.`);
+    return saved;
 }
 
-await main();
+try {
+    await main();
+} catch (error) {
+    await Actor.fail(`Realtor.ca extraction failed: ${errorText(error)}`);
+}
 await Actor.exit();

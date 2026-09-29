@@ -7,23 +7,22 @@
         "startUrl": {
             "title": "Realtor.ca URL",
             "type": "string",
-            "description": "A Realtor.ca map/search URL. URL filters are used first when provided.",
+            "description": "A Realtor.ca map/search URL. Used when no keyword or location is provided.",
             "editor": "textfield",
+            "default": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD",
             "prefill": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD"
         },
         "keyword": {
             "title": "Keyword",
             "type": "string",
-            "description": "Optional keyword filter such as condo, waterfront, garage, or an MLS number.",
-            "editor": "textfield",
-            "prefill": ""
+            "description": "Optional keyword filter such as condo, waterfront, garage, or an MLS number. Takes precedence over the Realtor.ca URL when provided.",
+            "editor": "textfield"
         },
         "location": {
             "title": "Location",
             "type": "string",
-            "description": "Optional city shortcut when no URL is provided. Supported examples: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton.",
-            "editor": "textfield",
-            "prefill": ""
+            "description": "Optional city shortcut. Supported examples: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton. Takes precedence over the Realtor.ca URL when provided.",
+            "editor": "textfield"
         },
         "results_wanted": {
             "title": "Results wanted",
@@ -31,7 +30,6 @@
             "description": "Maximum number of property listings to save.",
             "minimum": 1,
             "default": 20,
-            "prefill": 20,
             "editor": "number"
         },
         "max_pages": {
@@ -40,8 +38,23 @@
             "description": "Maximum number of result pages to request.",
             "minimum": 1,
             "default": 2,
-            "prefill": 2,
             "editor": "number"
+        },
+        "records_per_page": {
+            "title": "Records per page",
+            "type": "integer",
+            "description": "Listings requested per page, up to 100. Lower values collect more pages, higher values reduce the number of requests.",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50,
+            "editor": "number"
+        },
+        "include_details": {
+            "title": "Include full property details",
+            "type": "boolean",
+            "description": "Fetch the full property record for each listing to collect the complete image gallery and additional building details such as features, architectural style, basement type, and construction year. Disable it for faster runs with smaller records.",
+            "default": true,
+            "editor": "checkbox"
         },
         "proxyConfiguration": {
             "title": "Proxy configuration",
@@ -50,9 +63,7 @@
             "editor": "proxy",
             "default": {
                 "useApifyProxy": true,
-                "apifyProxyGroups": [
-                    "RESIDENTIAL"
-                ]
+                "apifyProxyGroups": ["RESIDENTIAL"]
             }
         }
     },
