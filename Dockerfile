@@ -13,9 +13,12 @@ COPY --chown=myuser:myuser package*.json Dockerfile ./
 
 # Install NPM packages. The base image ships its own node_modules, which is
 # removed first so npm builds a dependency tree that matches this Actor.
+# impit publishes its native binary as an optional platform dependency, so
+# optional dependencies must not be omitted here.
 RUN rm -rf node_modules \
     && npm --quiet set progress=false \
     && npm install --omit=dev --no-audit --no-fund \
+    && node -e "import('impit').then(m => console.log('impit OK:', Object.keys(m)))" \
     && echo "Installed NPM packages:" \
     && (npm list --omit=dev --all || true) \
     && echo "Node.js version:" \

@@ -1,11 +1,11 @@
 import { Actor, log } from 'apify';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'fs';
+import { Impit } from 'impit';
 import { tmpdir } from 'os';
 import { chromium } from 'patchright';
 import { join } from 'path';
 
 const SEARCH_ENDPOINT = 'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post';
-const DETAIL_ENDPOINT = 'https://api2.realtor.ca/Listing.svc/PropertyDetails';
 const MAP_PAGE_URL = 'https://www.realtor.ca/map';
 
 // Mirrors the `startUrl` default in .actor/input_schema.json. Used only when the
@@ -144,26 +144,56 @@ const PAGE_FETCH_HEADERS = {
 };
 
 const NAVIGATION_TIMEOUT_MS = 60000;
-const CLEARANCE_TIMEOUT_MS = 30000;
+const HTTP_REQUEST_TIMEOUT_MS = 30000;
+const CLEARANCE_TIMEOUT_MS = 10000;
+const CLEARANCE_POLL_MS = 500;
+const RETRY_PAUSE_MS = 1000;
+const DISMISS_TIMEOUT_MS = 2000;
 const PAGE_ATTEMPTS = 2;
 const MAX_SESSION_RESTARTS = 3;
-const DETAIL_CONCURRENCY = 4;
+const GALLERY_CONCURRENCY = 10;
+const GALLERY_PROBE_BATCH = 4;
+const PHOTO_PROBE_TIMEOUT_MS = 15000;
+const MAX_GALLERY_PHOTOS = 256;
+const SEARCH_RECORDS_PER_PAGE = 100;
 
 const DEFAULT_RESULTS_WANTED = 20;
 const DEFAULT_MAX_PAGES = 2;
-const DEFAULT_RECORDS_PER_PAGE = 50;
-const MAX_RECORDS_PER_PAGE = 100;
 const DOTNET_EPOCH_OFFSET_TICKS = 621355968000000000;
 const DOTNET_TICKS_PER_MILLISECOND = 10000;
 
 const CHALLENGE_PATTERN = /just a moment|checking your browser|security check|contrôle de sécurité|attention required/i;
 const BLOCK_PATTERN = /you have been blocked|access denied|accès refusé|error 1020/i;
+const PLACEHOLDER_PHOTO_PATTERN = /placeholder/i;
+
+// The HTTP client must present a TLS profile close to the browser that solved the
+// bot check, so the newest profile at or below the browser version is selected.
+const CHROME_PROFILES = [
+    { version: 151, name: 'chrome151' },
+    { version: 142, name: 'chrome142' },
+    { version: 136, name: 'chrome136' },
+    { version: 131, name: 'chrome131' },
+    { version: 125, name: 'chrome125' },
+    { version: 124, name: 'chrome124' },
+    { version: 116, name: 'chrome116' },
+    { version: 110, name: 'chrome110' },
+    { version: 107, name: 'chrome107' },
+    { version: 104, name: 'chrome104' },
+    { version: 101, name: 'chrome101' },
+    { version: 100, name: 'chrome100' },
+];
 
 await Actor.init();
 
 function toPositiveInt(value, fallback) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return parsed;
+}
+
+function toPositiveNumber(value, fallback) {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
     return parsed;
 }
 
@@ -179,6 +209,14 @@ function firstDefined(...values) {
 function errorText(error) {
     const message = error?.message ? String(error.message) : String(error);
     return message.split('\n')[0].trim().slice(0, 200);
+}
+
+/** Picks the impersonation profile closest to the browser that established the session. */
+function chromeProfileFor(userAgent) {
+    const major = Number.parseInt(String(userAgent).match(/Chrome\/(\d+)/)?.[1] || '', 10);
+    if (!Number.isFinite(major)) return CHROME_PROFILES[0].name;
+    return (CHROME_PROFILES.find((profile) => profile.version <= major) || CHROME_PROFILES[CHROME_PROFILES.length - 1])
+        .name;
 }
 
 function firstInputUrl(input) {
@@ -213,39 +251,54 @@ function parseRealtorUrl(rawUrl) {
     return params;
 }
 
+/** Resolves the search filters that Realtor.ca accepts as range parameters. */
+function buildFilterParams(input) {
+    const filters = {};
+    const beds = toPositiveInt(input.beds, 0);
+    const baths = toPositiveInt(input.baths, 0);
+    if (beds) filters.BedRange = `${beds}-0`;
+    if (baths) filters.BathRange = `${baths}-0`;
+
+    const priceMin = toPositiveInt(input.price_min, 0);
+    const priceMax = toPositiveInt(input.price_max, 0);
+    if (priceMin) filters.PriceMin = String(priceMin);
+    if (priceMax) filters.PriceMax = String(priceMax);
+
+    const sizeMin = toPositiveInt(input.size_min, 0);
+    const sizeMax = toPositiveInt(input.size_max, 0);
+    if (sizeMin || sizeMax) filters.BuildingSizeRange = `${sizeMin}-${sizeMax}`;
+
+    const landMin = toPositiveNumber(input.land_min, 0);
+    const landMax = toPositiveNumber(input.land_max, 0);
+    if (landMin || landMax) filters.LandSizeRange = `${landMin}-${landMax}`;
+
+    return filters;
+}
+
 /**
- * Resolves the search mode. A caller-provided keyword or location wins over the
- * URL, otherwise the supplied URL is used, and the documented default map area
- * is used only when nothing else was provided.
+ * Resolves the search mode. A caller-provided location wins over the URL,
+ * otherwise the supplied URL is used, and the documented default map area is
+ * used only when nothing else was provided.
  */
 function resolveSearch(input) {
     const resultsWanted = toPositiveInt(input.results_wanted, DEFAULT_RESULTS_WANTED);
     const maxPages = toPositiveInt(input.max_pages, DEFAULT_MAX_PAGES);
-    const recordsPerPage = Math.min(
-        toPositiveInt(input.records_per_page, DEFAULT_RECORDS_PER_PAGE),
-        MAX_RECORDS_PER_PAGE,
-        resultsWanted,
-    );
-    const keyword = normalizeText(input.keyword);
+    const recordsPerPage = Math.min(SEARCH_RECORDS_PER_PAGE, resultsWanted);
     const location = normalizeText(input.location);
     const suppliedUrl = firstInputUrl(input);
-    const includeDetails = input.include_details !== false;
     const locationBounds = location ? LOCATION_BOUNDS[location.toLowerCase()] : undefined;
 
     let mode = 'url';
     let sourceUrl = suppliedUrl || DEFAULT_START_URL;
 
-    if (keyword) {
-        mode = 'keyword';
-        sourceUrl = '';
-    } else if (location) {
+    if (location) {
         mode = 'location';
         sourceUrl = '';
     } else if (!suppliedUrl) {
-        log.info('No URL, keyword, or location was provided; using the default Canada-wide map area.');
+        log.info('No URL or location was provided; using the default Canada-wide map area.');
     }
 
-    if (mode !== 'url' && location && !locationBounds) {
+    if (mode === 'location' && !locationBounds) {
         log.warning(`"${location}" is not a supported city shortcut; searching the default Canada-wide area instead.`);
     }
 
@@ -265,12 +318,12 @@ function resolveSearch(input) {
         StoreyRange: '0-0',
         ...DEFAULT_BOUNDS,
         ...parseRealtorUrl(sourceUrl),
+        ...buildFilterParams(input),
     };
 
-    if (keyword) params.Keywords = keyword;
-    if (mode !== 'url' && locationBounds) Object.assign(params, locationBounds);
+    if (mode === 'location' && locationBounds) Object.assign(params, locationBounds);
 
-    return { params, mode, resultsWanted, maxPages, recordsPerPage, includeDetails };
+    return { params, mode, resultsWanted, maxPages, recordsPerPage };
 }
 
 function toFormBody(params) {
@@ -366,45 +419,64 @@ function pickPhotoUrl(photo) {
     return photo.HighResPath || photo.MedResPath || photo.LowResPath || photo.PhotoPath;
 }
 
+/** First photo object from a search or detail property record. */
+function firstPhotoObject(property = {}) {
+    return toPhotoArray(property)[0];
+}
+
+/** Splits a photo path into its base and sequence number so the gallery can be derived. */
+function photoSequenceParts(photo) {
+    const path = pickPhotoUrl(photo);
+    if (!path || PLACEHOLDER_PHOTO_PATTERN.test(path)) return null;
+    const match = path.match(/^(.*_)(\d+)(\.[A-Za-z0-9]+)$/);
+    if (!match) return null;
+    return {
+        base: match[1],
+        extension: match[3],
+        sequence: Number.parseInt(match[2], 10) || 1,
+        build: (n) => `${match[1]}${n}${match[3]}`,
+    };
+}
+
 function photoUrls(property = {}) {
     const photos = toPhotoArray(property);
     if (!photos.length) return undefined;
     const ordered = [...photos].sort((a, b) => Number(a.SequenceId || 0) - Number(b.SequenceId || 0));
-    const urls = ordered.map(pickPhotoUrl).filter(Boolean);
+    const urls = ordered.map(pickPhotoUrl).filter((url) => url && !PLACEHOLDER_PHOTO_PATTERN.test(url));
+    if (!urls.length) return undefined;
     return [...new Set(urls.map(absoluteRealtorUrl).filter(Boolean))];
 }
 
-function firstPhotoUrl(property = {}) {
-    const urls = photoUrls(property);
-    return urls?.[0];
-}
-
-function mapListing(listing, details = null) {
+function mapListing(listing, galleryUrls = null) {
     const property = listing.Property || {};
-    const detailProperty = details?.Property || {};
-    const address = property.Address || detailProperty.Address || {};
-    const building = details?.Building || listing.Building || property.Building || {};
-    const land = details?.Land || listing.Land || property.Land || {};
-    const business = details?.Business || listing.Business || property.Business || {};
+    const address = property.Address || {};
+    const building = listing.Building || property.Building || {};
+    const land = listing.Land || property.Land || {};
+    const business = listing.Business || property.Business || {};
     const alternateUrl = listing.AlternateURL || property.AlternateURL || {};
-    const agents = pickCollection(details?.Individual, listing.Individual);
-    const offices = pickCollection(details?.Office, listing.Office);
+    const agents = pickCollection(listing.Individual, []);
+    const offices = pickCollection(listing.Office, []);
     const detailsPath = listing.RelativeDetailsURL || property.RelativeDetailsURL || alternateUrl.DetailsLink;
-    const updatedDate = firstDefined(details?.InsertedDateUTC, listing.InsertedDateUTC, listing.TimeOnRealtor);
     const addressParts = splitAddressText(address.AddressText);
+    const photos = galleryUrls?.length ? galleryUrls : photoUrls(property);
+    const media = (Array.isArray(listing.Media) ? listing.Media : [])
+        .filter((entry) => entry?.MediaCategoryURL)
+        .sort((a, b) => Number(a.Order || 0) - Number(b.Order || 0))
+        .map((entry) => cleanRecord({ type: entry.Description, url: absoluteRealtorUrl(entry.MediaCategoryURL) }));
 
     return cleanRecord({
         listing_id: firstDefined(listing.Id, property.PropertyID),
         mls_number: firstDefined(listing.MlsNumber, property.MlsNumber),
         url: absoluteRealtorUrl(detailsPath),
         relative_url: detailsPath,
-        price: firstDefined(property.Price, detailProperty.Price),
-        price_unformatted: toNumberIfNumeric(
-            firstDefined(property.PriceUnformattedValue, detailProperty.PriceUnformattedValue),
+        price: property.Price,
+        price_unformatted: toNumberIfNumeric(property.PriceUnformattedValue),
+        price_changed_date: toIsoTimestamp(
+            firstDefined(property.PriceChangeTagDateUTC, property.PriceChangeTimeOnRealtor),
         ),
-        property_type: firstDefined(property.Type, detailProperty.Type),
-        transaction_type: firstDefined(property.TransactionType, detailProperty.TransactionType),
-        ownership_type: firstDefined(property.OwnershipType, detailProperty.OwnershipType),
+        property_type: property.Type,
+        transaction_type: property.TransactionType,
+        ownership_type: property.OwnershipType,
         address: addressParts.full,
         street_address: address.StreetAddress || addressParts.street,
         city: address.City,
@@ -421,14 +493,17 @@ function mapListing(listing, details = null) {
         architectural_style: building.ArchitecturalStyle,
         basement_type: building.BasementType,
         constructed_date: building.ConstructedDate,
+        building_amenities: building.Ammenities,
         land_size: land.SizeTotal,
-        parking_type: firstDefined(property.ParkingType, detailProperty.ParkingType),
-        parking_spaces: firstDefined(property.ParkingSpaceTotal, detailProperty.ParkingSpaceTotal),
-        features: firstDefined(detailProperty.Features, property.Features),
-        amenities_nearby: firstDefined(property.AmmenitiesNearBy, detailProperty.AmmenitiesNearBy),
-        public_remarks: firstDefined(details?.PublicRemarks, listing.PublicRemarks, property.PublicRemarks),
-        photo_url: firstPhotoUrl(detailProperty) || firstPhotoUrl(property),
-        photo_urls: photoUrls(detailProperty) || photoUrls(property),
+        land_frontage: land.SizeFrontage,
+        parking_type: property.ParkingType,
+        parking_spaces: property.ParkingSpaceTotal,
+        features: property.Features,
+        amenities_nearby: property.AmmenitiesNearBy,
+        public_remarks: listing.PublicRemarks || property.PublicRemarks,
+        photo_url: photos?.[0],
+        photo_urls: photos,
+        media,
         agents: agents.map((agent) =>
             cleanRecord({
                 name: agent.Name,
@@ -437,6 +512,7 @@ function mapListing(listing, details = null) {
                 email: agent.Emails?.[0]?.ContactId,
                 website: agent.Websites?.[0]?.Website,
                 organization: agent.Organization?.Name,
+                photo_url: absoluteRealtorUrl(firstDefined(agent.PhotoHighRes, agent.Photo)),
             }),
         ),
         offices: offices.map((office) =>
@@ -448,8 +524,8 @@ function mapListing(listing, details = null) {
             }),
         ),
         business_type: business.BusinessType,
-        listed_date: firstDefined(listing.ListedTime, details?.ListedTime, property.ListedTime),
-        updated_date: toIsoTimestamp(updatedDate),
+        listed_date: firstDefined(listing.ListedTime, property.ListedTime),
+        updated_date: toIsoTimestamp(firstDefined(listing.InsertedDateUTC, listing.TimeOnRealtor)),
     });
 }
 
@@ -466,6 +542,58 @@ async function mapWithConcurrency(items, limit, worker) {
     });
     await Promise.all(runners);
     return results;
+}
+
+/** Probes several sequences at once; returns null when a probe fails transiently. */
+async function probeSequences(probe, build, sequences) {
+    const results = await Promise.all(sequences.map(async (sequence) => [sequence, await probe(build(sequence))]));
+    if (results.some(([, found]) => found === null)) return null;
+    return results;
+}
+
+/**
+ * Resolves the full photo gallery from the public image service. The single
+ * search photo already carries the sequence pattern, so the highest existing
+ * sequence is found with a few parallel probe rounds instead of a detail record
+ * for every listing. Probes run in small parallel batches to keep the round-trip
+ * count low without hammering the service.
+ */
+async function deriveGalleryFromCdn(probe, photo) {
+    const parts = photoSequenceParts(photo);
+    if (!parts) return undefined;
+    if ((await probe(parts.build(parts.sequence))) !== true) return undefined;
+
+    // Bracket the gallery size with one parallel ladder of probes.
+    const ladder = [8, 24, 48, 80, 120, MAX_GALLERY_PHOTOS].filter((sequence) => sequence > parts.sequence);
+    const ladderResults = await probeSequences(probe, parts.build, ladder);
+    if (!ladderResults) return undefined;
+
+    let low = parts.sequence;
+    let high = MAX_GALLERY_PHOTOS + 1;
+    for (const [sequence, found] of ladderResults) {
+        if (found) low = Math.max(low, sequence);
+        else high = Math.min(high, sequence);
+    }
+
+    // Narrow the bracket in parallel rounds until the size is exact.
+    while (high - low > 1) {
+        const step = Math.ceil((high - low) / (GALLERY_PROBE_BATCH + 1));
+        const candidates = [];
+        for (let index = 1; index <= GALLERY_PROBE_BATCH; index += 1) {
+            const sequence = low + step * index;
+            if (sequence > low && sequence < high) candidates.push(sequence);
+        }
+        if (!candidates.length) break;
+
+        const results = await probeSequences(probe, parts.build, candidates);
+        if (!results) return undefined;
+        for (const [sequence, found] of results) {
+            if (found) low = Math.max(low, sequence);
+            else high = Math.min(high, sequence);
+        }
+    }
+
+    return Array.from({ length: low }, (unused, index) => parts.build(index + 1));
 }
 
 function browserDirs(root) {
@@ -564,9 +692,9 @@ async function launchStealthContext(profileDir, proxy) {
     throw new Error(`no browser profile could be started (${errorText(lastError)})`);
 }
 
-async function waitForClearance(page) {
+async function waitForClearance(page, timeoutMs) {
     const started = Date.now();
-    while (Date.now() - started < CLEARANCE_TIMEOUT_MS) {
+    while (Date.now() - started < timeoutMs) {
         const state = await page
             .evaluate(() => ({ title: document.title, text: (document.body?.innerText || '').slice(0, 400) }))
             .catch(() => null);
@@ -575,111 +703,224 @@ async function waitForClearance(page) {
             if (BLOCK_PATTERN.test(sample)) return 'blocked';
             if (state.title && !CHALLENGE_PATTERN.test(sample)) return 'ready';
         }
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(CLEARANCE_POLL_MS);
     }
     return 'timeout';
 }
 
+/** Validates a search payload and rejects throttled or partial responses. */
+function validateSearchPayload(data) {
+    if (!Array.isArray(data?.Results)) return { error: 'the response did not contain a property result list' };
+    if (data.Results.length) return { data };
+
+    // An empty list is only trusted when the payload states that nothing matched.
+    const totalRecords = Number(data?.Paging?.TotalRecords);
+    if (data?.Paging && Number.isFinite(totalRecords) && totalRecords === 0) {
+        log.debug('Search returned no matching listings.');
+        return { data };
+    }
+    return { error: 'the response returned no listings without reporting a match count' };
+}
+
 /**
- * Opens a stealth browser session and fetches the internal Realtor.ca search API
- * from inside that session, using the same request the Realtor.ca map page makes.
+ * Bootstraps a stealth browser session once, then reuses that exact session
+ * (cookies, user agent, proxy exit) for fast direct requests. The browser stays
+ * available to refresh an expired bot-check clearance or to fetch in-page when a
+ * direct request is refused.
  */
 async function createStealthSession({ mapUrl, proxyUrl }) {
     const proxy = browserProxySettings(proxyUrl);
     const profileDir = mkdtempSync(join(tmpdir(), 'realtor-profile-'));
     const context = await launchStealthContext(profileDir, proxy);
     const page = context.pages()[0] || (await context.newPage());
+    const cookieJar = new Map();
+    let httpClient = null;
+    let apiHeaders = null;
+
+    const cookieHeader = () => [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; ');
+
+    /** Keeps the cookie jar in sync with cookies rotated by the target. */
+    function storeResponseCookies(headers) {
+        const raw = typeof headers?.getSetCookie === 'function' ? headers.getSetCookie() : [];
+        if (!raw?.length) return;
+        for (const entry of raw) {
+            const pair = String(entry).split(';')[0];
+            const separator = pair.indexOf('=');
+            if (separator > 0) cookieJar.set(pair.slice(0, separator).trim(), pair.slice(separator + 1).trim());
+        }
+        if (apiHeaders) apiHeaders.cookie = cookieHeader();
+    }
+
+    /** Copies the browser cookies and user agent to the direct HTTP client. */
+    async function captureSession() {
+        const cookies = await context.cookies().catch(() => []);
+        for (const cookie of cookies) {
+            if (!/(^|\.)realtor\.ca$/.test(cookie.domain)) continue;
+            cookieJar.set(cookie.name, cookie.value);
+        }
+
+        const userAgent = await page.evaluate(() => navigator.userAgent).catch(() => '');
+        apiHeaders = {
+            ...(cookieJar.size ? { cookie: cookieHeader() } : {}),
+            ...(userAgent ? { 'user-agent': userAgent } : {}),
+        };
+
+        if (!httpClient) {
+            httpClient = new Impit({
+                browser: chromeProfileFor(userAgent),
+                timeout: HTTP_REQUEST_TIMEOUT_MS,
+                ...(proxyUrl ? { proxyUrl } : {}),
+            });
+        }
+        return userAgent;
+    }
+
+    async function loadMapPage() {
+        await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+        const dismiss = page.getByRole('link', { name: 'Dismiss' });
+        if (await dismiss.isVisible({ timeout: DISMISS_TIMEOUT_MS }).catch(() => false)) {
+            await dismiss.click({ timeout: DISMISS_TIMEOUT_MS }).catch(() => {});
+        }
+        await waitForClearance(page, CLEARANCE_TIMEOUT_MS);
+    }
 
     async function open() {
         log.info('Opening Realtor.ca in a stealth browser session to establish API access.');
-        await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+        await loadMapPage();
+        const userAgent = await captureSession();
+        log.info(`Session established. Direct requests are ready with the ${chromeProfileFor(userAgent)} profile.`);
+    }
 
-        const clearance = await waitForClearance(page);
-        if (clearance === 'blocked') {
-            log.warning('Realtor.ca served a bot-protection block page to this browser session.');
-        } else if (clearance === 'timeout') {
-            log.warning('Realtor.ca bot protection had not cleared yet; continuing with the API request.');
+    /** Reloads the map page to refresh an expired bot-check clearance. */
+    async function refreshSession() {
+        try {
+            const clearance = await waitForClearance(page, CLEARANCE_TIMEOUT_MS);
+            if (clearance === 'ready') {
+                await captureSession();
+                return true;
+            }
+            await loadMapPage();
+            await captureSession();
+            return true;
+        } catch (error) {
+            log.debug(`Session refresh failed: ${errorText(error)}`);
+            return false;
         }
+    }
 
-        const dismiss = page.getByRole('link', { name: 'Dismiss' });
-        if (await dismiss.isVisible({ timeout: 5000 }).catch(() => false)) {
-            await dismiss.click({ timeout: 5000 }).catch(() => {});
+    /** Direct request through the bootstrapped session; returns null when it cannot be sent. */
+    async function directRequest(url, options = {}) {
+        if (!httpClient) return null;
+        try {
+            const response = await httpClient.fetch(url, {
+                ...options,
+                headers: { ...apiHeaders, ...options.headers },
+            });
+            storeResponseCookies(response.headers);
+            return response;
+        } catch (error) {
+            log.debug(`Direct request failed: ${errorText(error)}`);
+            return null;
+        }
+    }
+
+    async function searchDirect(body) {
+        const started = Date.now();
+        const response = await directRequest(SEARCH_ENDPOINT, {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body,
+        });
+        if (!response) return { error: 'the direct request could not be sent' };
+        if (!response.ok) return { error: `HTTP ${response.status}` };
+        try {
+            const outcome = validateSearchPayload(JSON.parse(await response.text()));
+            if (outcome.data) {
+                log.debug(
+                    `Search page ${body.match(/CurrentPage=(\d+)/)?.[1] || '?'} fetched directly in ${Date.now() - started}ms.`,
+                );
+            }
+            return outcome;
+        } catch (error) {
+            return { error: `invalid JSON response: ${errorText(error)}` };
+        }
+    }
+
+    /** Fallback used only when direct requests are refused. */
+    async function searchInPage(body) {
+        const started = Date.now();
+        try {
+            const result = await page.evaluate(
+                async ({ url, payload, headers }) => {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers,
+                        body: payload,
+                        credentials: 'include',
+                    });
+                    return { ok: response.ok, status: response.status, text: await response.text() };
+                },
+                { url: SEARCH_ENDPOINT, payload: body, headers: PAGE_FETCH_HEADERS },
+            );
+
+            if (!result.ok) return { error: `HTTP ${result.status}` };
+
+            try {
+                const outcome = validateSearchPayload(JSON.parse(result.text));
+                if (outcome.data) log.debug(`Search page fetched in-page in ${Date.now() - started}ms.`);
+                return outcome;
+            } catch (error) {
+                return { error: `invalid JSON response: ${errorText(error)}` };
+            }
+        } catch (error) {
+            return { error: `in-page request failed: ${errorText(error)}` };
         }
     }
 
     async function fetchSearch(params) {
         const body = toFormBody(params).toString();
-        let lastError = 'the browser session request failed';
+        let lastError = 'the session request failed';
 
         for (let attempt = 1; attempt <= PAGE_ATTEMPTS; attempt++) {
-            try {
-                const result = await page.evaluate(
-                    async ({ url, payload, headers }) => {
-                        const response = await fetch(url, {
-                            method: 'POST',
-                            headers,
-                            body: payload,
-                            credentials: 'include',
-                        });
-                        return { ok: response.ok, status: response.status, text: await response.text() };
-                    },
-                    { url: SEARCH_ENDPOINT, payload: body, headers: PAGE_FETCH_HEADERS },
-                );
+            const direct = await searchDirect(body);
+            if (direct.data) return direct;
+            lastError = direct.error;
 
-                if (result.ok) {
-                    try {
-                        const data = JSON.parse(result.text);
-                        if (Array.isArray(data?.Results)) return { data };
-                        return { blocked: true, error: 'the response did not contain a property result list' };
-                    } catch (error) {
-                        return { blocked: true, error: `invalid JSON response: ${errorText(error)}` };
-                    }
-                }
+            if (attempt === PAGE_ATTEMPTS) break;
 
-                lastError = `HTTP ${result.status}`;
-                if (result.status !== 429 && result.status < 500) break;
-            } catch (error) {
-                lastError = `in-page request failed: ${errorText(error)}`;
-            }
-
-            if (attempt < PAGE_ATTEMPTS) await page.waitForTimeout(1000 * attempt);
+            log.debug(`Direct search request failed (${lastError}); refreshing the session.`);
+            await refreshSession();
+            await page.waitForTimeout(RETRY_PAUSE_MS);
         }
 
-        return { blocked: true, error: lastError };
+        const inPage = await searchInPage(body);
+        if (inPage.data) return inPage;
+
+        return { blocked: true, error: inPage.error || lastError };
     }
 
-    async function fetchDetails(listing) {
-        const propertyId = listing.Id;
-        const referenceNumber = listing.MlsNumber;
-        if (!propertyId || !referenceNumber) return null;
-
-        const url = new URL(DETAIL_ENDPOINT);
-        url.searchParams.set('ApplicationId', '1');
-        url.searchParams.set('CultureId', '1');
-        url.searchParams.set('PropertyID', String(propertyId));
-        url.searchParams.set('ReferenceNumber', String(referenceNumber));
-        url.searchParams.set('PreferedMeasurementUnit', '1');
-        url.searchParams.set('HashCode', '0');
-
-        try {
-            const result = await page.evaluate(async (endpoint) => {
-                const response = await fetch(endpoint, { credentials: 'include' });
-                return { ok: response.ok, status: response.status, text: await response.text() };
-            }, url.href);
-
-            if (!result.ok) {
-                log.debug(`Detail record for ${propertyId} returned HTTP ${result.status}.`);
-                return null;
-            }
-
-            const parsed = JSON.parse(result.text);
-            const details = Array.isArray(parsed) ? parsed[0] : parsed;
-            if (!details?.Property && !details?.Building) return null;
-            return details;
-        } catch (error) {
-            log.debug(`Detail record for ${propertyId} could not be loaded: ${errorText(error)}`);
+    /** Checks that a photo exists, using the direct client first. */
+    async function photoExists(url) {
+        const direct = await directRequest(url, { method: 'HEAD' });
+        if (direct) {
+            if (direct.status === 200) return true;
+            if (direct.status === 404) return false;
             return null;
         }
+
+        try {
+            const fallback = await context.request.head(url, { timeout: PHOTO_PROBE_TIMEOUT_MS });
+            if (fallback.status() === 200) return true;
+            if (fallback.status() === 404) return false;
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** Derives the complete photo gallery from the public image service. */
+    async function photoGallery(listing) {
+        return deriveGalleryFromCdn(photoExists, firstPhotoObject(listing.Property));
     }
 
     async function close() {
@@ -693,12 +934,12 @@ async function createStealthSession({ mapUrl, proxyUrl }) {
         }
     }
 
-    return { open, fetchSearch, fetchDetails, close };
+    return { open, fetchSearch, photoGallery, close };
 }
 
 async function main() {
     const input = (await Actor.getInput()) || {};
-    const { params, mode, resultsWanted, maxPages, recordsPerPage, includeDetails } = resolveSearch(input);
+    const { params, mode, resultsWanted, maxPages, recordsPerPage } = resolveSearch(input);
 
     const rawProxyConfiguration = input.proxyConfiguration;
     const hasCustomProxyUrls =
@@ -759,7 +1000,7 @@ async function main() {
     }
 
     log.info(
-        `Starting Realtor.ca extraction in ${mode} mode. Results wanted: ${resultsWanted}, max pages: ${maxPages}, records per page: ${recordsPerPage}, detail records: ${includeDetails ? 'enabled' : 'disabled'}.`,
+        `Starting Realtor.ca extraction in ${mode} mode. Results wanted: ${resultsWanted}, max pages: ${maxPages}.`,
     );
 
     let saved = 0;
@@ -798,25 +1039,17 @@ async function main() {
             }
 
             if (batch.length) {
-                let detailFailures = 0;
                 const activeSession = session;
-                const details = includeDetails
-                    ? await mapWithConcurrency(batch, DETAIL_CONCURRENCY, async (listing) => {
-                          const detail = await activeSession.fetchDetails(listing);
-                          if (!detail) detailFailures += 1;
-                          return detail;
-                      })
-                    : batch.map(() => null);
 
-                await Actor.pushData(batch.map((listing, index) => mapListing(listing, details[index])));
+                // Galleries are completed from the image service, so no listing page
+                // or detail record has to be requested.
+                const galleries = await mapWithConcurrency(batch, GALLERY_CONCURRENCY, (listing) =>
+                    activeSession.photoGallery(listing),
+                );
+
+                await Actor.pushData(batch.map((listing, index) => mapListing(listing, galleries[index])));
                 saved += batch.length;
-                if (detailFailures) {
-                    log.warning(
-                        `Saved ${saved}/${resultsWanted} listings. ${detailFailures} of ${batch.length} detail records could not be loaded and were saved with search data only.`,
-                    );
-                } else {
-                    log.info(`Saved ${saved}/${resultsWanted} listings.`);
-                }
+                log.info(`Saved ${saved}/${resultsWanted} listings.`);
             }
 
             const paging = result.data.Paging || {};

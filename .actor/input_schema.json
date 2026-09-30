@@ -12,17 +12,67 @@
             "default": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD",
             "prefill": "https://www.realtor.ca/map#ZoomLevel=4&Center=49.864363%2C-84.749636&LatitudeMax=60.60705&LongitudeMax=-33.33362&LatitudeMin=36.06441&LongitudeMin=-136.16565&view=list&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD"
         },
-        "keyword": {
-            "title": "Keyword",
-            "type": "string",
-            "description": "Optional keyword filter such as condo, waterfront, garage, or an MLS number. Takes precedence over the Realtor.ca URL when provided.",
-            "editor": "textfield"
-        },
         "location": {
             "title": "Location",
             "type": "string",
             "description": "Optional city shortcut. Supported examples: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton. Takes precedence over the Realtor.ca URL when provided.",
             "editor": "textfield"
+        },
+        "beds": {
+            "title": "Bedrooms",
+            "type": "integer",
+            "description": "Minimum number of bedrooms.",
+            "minimum": 1,
+            "editor": "number"
+        },
+        "baths": {
+            "title": "Bathrooms",
+            "type": "integer",
+            "description": "Minimum number of bathrooms.",
+            "minimum": 1,
+            "editor": "number"
+        },
+        "price_min": {
+            "title": "Minimum price",
+            "type": "integer",
+            "description": "Minimum listing price in Canadian dollars.",
+            "minimum": 0,
+            "editor": "number"
+        },
+        "price_max": {
+            "title": "Maximum price",
+            "type": "integer",
+            "description": "Maximum listing price in Canadian dollars.",
+            "minimum": 0,
+            "editor": "number"
+        },
+        "size_min": {
+            "title": "Minimum interior size",
+            "type": "integer",
+            "description": "Minimum interior size in square feet. Realtor.ca matches listings that publish an exact size.",
+            "minimum": 0,
+            "editor": "number"
+        },
+        "size_max": {
+            "title": "Maximum interior size",
+            "type": "integer",
+            "description": "Maximum interior size in square feet. Realtor.ca matches listings that publish an exact size.",
+            "minimum": 0,
+            "editor": "number"
+        },
+        "land_min": {
+            "title": "Minimum land size",
+            "type": "number",
+            "description": "Minimum land size in acres.",
+            "minimum": 0,
+            "editor": "number"
+        },
+        "land_max": {
+            "title": "Maximum land size",
+            "type": "number",
+            "description": "Maximum land size in acres.",
+            "minimum": 0,
+            "editor": "number"
         },
         "results_wanted": {
             "title": "Results wanted",
@@ -39,22 +89,6 @@
             "minimum": 1,
             "default": 2,
             "editor": "number"
-        },
-        "records_per_page": {
-            "title": "Records per page",
-            "type": "integer",
-            "description": "Listings requested per page, up to 100. Lower values collect more pages, higher values reduce the number of requests.",
-            "minimum": 1,
-            "maximum": 100,
-            "default": 50,
-            "editor": "number"
-        },
-        "include_details": {
-            "title": "Include full property details",
-            "type": "boolean",
-            "description": "Fetch the full property record for each listing to collect the complete image gallery and additional building details such as features, architectural style, basement type, and construction year. Disable it for faster runs with smaller records.",
-            "default": true,
-            "editor": "checkbox"
         },
         "proxyConfiguration": {
             "title": "Proxy configuration",

@@ -1,17 +1,18 @@
 ## What does Realtor.ca Property Scraper do?
 
-Realtor.ca Property Scraper extracts Canadian property listings from Realtor.ca, Canada's largest real estate listing platform. Paste a Realtor.ca map URL, or search by city and keyword, and collect prices, addresses, coordinates, MLS numbers, property details, photo galleries, agent contacts, and brokerage information. The result is a clean, structured dataset you can export, schedule, or push into your own systems.
+Realtor.ca Property Scraper extracts Canadian property listings from Realtor.ca, Canada's largest real estate listing platform. Paste a Realtor.ca map URL, or search by city with bedroom, bathroom, price, size, and land filters, and collect prices, addresses, coordinates, MLS numbers, property details, photo galleries, agent contacts, and brokerage information. The result is a clean, structured dataset you can export, schedule, or push into your own systems.
 
 ## Why use Realtor.ca Property Scraper?
 
 - **Map URL support** - Paste any Realtor.ca map URL. The Actor reads your area, zoom level, sort order, transaction type, and property type filters directly from the URL, so the dataset matches the exact search you built on Realtor.ca.
-- **Keyword and city searches** - Search by terms such as condo, waterfront, garage, acreage, or an MLS number, and use city shortcuts for Toronto, Vancouver, Montreal, Calgary, Ottawa, or Edmonton.
+- **City and filter searches** - Use city shortcuts for Toronto, Vancouver, Montreal, Calgary, Ottawa, or Edmonton, and narrow results by bedrooms, bathrooms, price, interior size, and land size.
 - **Pagination and result limits** - Control how many listings you save, how many pages are requested, and how many listings are fetched per page.
 - **Clean structured output** - Empty and null values are removed before records are saved, so exports stay clean for spreadsheets, dashboards, and data pipelines.
-- **Photo galleries** - Every listing includes a primary photo URL and the complete gallery of high-resolution image URLs, with photos ordered as published on Realtor.ca.
-- **Full property records** - Each listing is completed with its detail record, which adds features, architectural style, basement type, construction year, and remarks that are not published in search results alone.
+- **Photo galleries** - Every listing includes a primary photo URL and the complete gallery of high-resolution image URLs, with photos ordered as published on Realtor.ca. Galleries are completed automatically without opening any listing page.
+- **Complete records, no page loads** - Every listing is captured from the search results themselves, then completed with its full photo gallery. No listing page is ever opened, which keeps runs fast and stable.
 - **Agent and brokerage data** - Collect agent names, positions, phone numbers, websites, and brokerage organizations when available.
 - **Scheduling ready** - Run the Actor on demand, or schedule it to monitor new inventory in a target area.
+- **Fast runs** - The area session is established once and reused for the whole run, so small jobs finish in seconds and large jobs are limited only by the number of listings you ask for.
 
 ## What data can you extract from Realtor.ca?
 
@@ -54,29 +55,35 @@ Each listing includes the full photo gallery. `photo_url` is the first gallery i
 ## How to use Realtor.ca Property Scraper
 
 1. Open the Actor on Apify Store.
-2. Paste a Realtor.ca map URL, or enter a city name and an optional keyword.
+2. Paste a Realtor.ca map URL, or enter a city name and optional filters.
 3. Set how many listings you want and how many pages to request.
 4. Run the Actor.
 5. Download the dataset or connect it to your workflow.
 
 ## Input Parameters
 
-| Parameter            | Type    | Required | Default             | Description                                                                                                               |
-| -------------------- | ------- | -------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `startUrl`           | String  | No       | Canada-wide map URL | Realtor.ca map or search URL. URL filters are used when no keyword or location is provided.                               |
-| `keyword`            | String  | No       | -                   | Optional listing keyword or MLS search term. Examples: condo, waterfront, garage, acreage. Takes precedence over the URL. |
-| `location`           | String  | No       | -                   | City shortcut. Supported: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton. Takes precedence over the URL.         |
-| `results_wanted`     | Integer | No       | `20`                | Maximum number of listings to save.                                                                                       |
-| `max_pages`          | Integer | No       | `2`                 | Maximum number of result pages to request.                                                                                |
-| `records_per_page`   | Integer | No       | `50`                | Listings requested per page, up to 100. Lower values collect more pages, higher values reduce the number of requests.     |
-| `include_details`    | Boolean | No       | `true`              | Collect the full property record for each listing, including the complete image gallery and extra building details.       |
-| `proxyConfiguration` | Object  | No       | Residential proxy   | Proxy settings for reliable collection. Residential proxies are recommended.                                              |
+| Parameter            | Type    | Required | Default             | Description                                                                                                       |
+| -------------------- | ------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `startUrl`           | String  | No       | Canada-wide map URL | Realtor.ca map or search URL. URL filters are used when no location is provided.                                  |
+| `location`           | String  | No       | -                   | City shortcut. Supported: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton. Takes precedence over the URL. |
+| `beds`               | Integer | No       | -                   | Minimum number of bedrooms.                                                                                       |
+| `baths`              | Integer | No       | -                   | Minimum number of bathrooms.                                                                                      |
+| `price_min`          | Integer | No       | -                   | Minimum price in Canadian dollars.                                                                                |
+| `price_max`          | Integer | No       | -                   | Maximum price in Canadian dollars.                                                                                |
+| `size_min`           | Integer | No       | -                   | Minimum interior size in square feet.                                                                             |
+| `size_max`           | Integer | No       | -                   | Maximum interior size in square feet.                                                                             |
+| `land_min`           | Number  | No       | -                   | Minimum land size in acres.                                                                                       |
+| `land_max`           | Number  | No       | -                   | Maximum land size in acres.                                                                                       |
+| `results_wanted`     | Integer | No       | `20`                | Maximum number of listings to save.                                                                               |
+| `max_pages`          | Integer | No       | `2`                 | Maximum number of result pages to request.                                                                        |
+| `proxyConfiguration` | Object  | No       | Residential proxy   | Proxy settings for reliable collection. Residential proxies are recommended.                                      |
 
 ### Search mode precedence
 
-- A provided `keyword` or `location` runs that search and the URL is ignored, which keeps each search mode predictable.
-- If no keyword or location is provided, the supplied `startUrl` is used.
+- A provided `location` runs that city search and the URL is ignored, which keeps each search mode predictable.
+- If no location is provided, the supplied `startUrl` is used.
 - If nothing is provided, the Actor runs the default Canada-wide map area.
+- Filter inputs and URL filters combine, and an explicit filter input wins over the same filter inside the URL.
 
 ## Output Data
 
@@ -88,6 +95,7 @@ Each listing includes the full photo gallery. `photo_url` is the first gallery i
 | `relative_url`        | String | Realtor.ca detail path                                             |
 | `price`               | String | Displayed price                                                    |
 | `price_unformatted`   | Number | Numeric price when provided                                        |
+| `price_changed_date`  | String | ISO date of the last price change when provided                    |
 | `property_type`       | String | Property type                                                      |
 | `transaction_type`    | String | Sale or rental type when provided                                  |
 | `ownership_type`      | String | Ownership type                                                     |
@@ -106,11 +114,13 @@ Each listing includes the full photo gallery. `photo_url` is the first gallery i
 | `land_size`           | String | Land size when available                                           |
 | `photo_url`           | String | Primary property image                                             |
 | `photo_urls`          | Array  | Property image gallery URLs                                        |
+| `media`               | Array  | Video tours, brochures, and other media links when provided        |
 | `agents`              | Array  | Agent names, positions, phone numbers, websites, and organizations |
 | `offices`             | Array  | Brokerage office details when available                            |
-| `public_remarks`      | String | Listing remarks                                                    |
-| `features`            | String | Property features and amenities                                    |
+| `public_remarks`      | String | Listing remarks when published                                     |
+| `features`            | String | Property features when published                                   |
 | `amenities_nearby`    | String | Nearby amenities                                                   |
+| `building_amenities`  | String | Building amenities when published                                  |
 | `parking_type`        | String | Parking type                                                       |
 | `parking_spaces`      | String | Number of parking spaces                                           |
 | `building_type`       | String | Building type                                                      |
@@ -131,27 +141,43 @@ Use a Realtor.ca map URL to collect listings from a specific area with all your 
 {
     "startUrl": "https://www.realtor.ca/map#ZoomLevel=11&LatitudeMax=43.85546&LongitudeMax=-79.00248&LatitudeMin=43.45830&LongitudeMin=-79.63926&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD",
     "results_wanted": 50,
-    "max_pages": 3,
-    "records_per_page": 50
+    "max_pages": 3
 }
 ```
 
-### City and Keyword Search
+### City Search with Filters
 
-Search by city with a keyword such as condo, waterfront, or garage.
+Search a city and narrow the results by bedrooms, bathrooms, and price.
 
 ```json
 {
     "location": "Toronto",
-    "keyword": "condo",
+    "beds": 3,
+    "baths": 2,
+    "price_min": 700000,
+    "price_max": 1500000,
     "results_wanted": 40,
+    "max_pages": 2
+}
+```
+
+### Interior and Land Size Search
+
+Filter by interior size in square feet and land size in acres.
+
+```json
+{
+    "location": "Calgary",
+    "size_min": 1800,
+    "land_min": 0.25,
+    "results_wanted": 30,
     "max_pages": 2
 }
 ```
 
 ### City Only Search
 
-Collect listings for a city without a keyword filter.
+Collect listings for a city with no extra filters.
 
 ```json
 {
@@ -169,8 +195,7 @@ Increase the page size to reduce the number of requests while collecting more li
 {
     "startUrl": "https://www.realtor.ca/map#ZoomLevel=11&LatitudeMax=43.85546&LongitudeMax=-79.00248&LatitudeMin=43.45830&LongitudeMin=-79.63926&Sort=6-D&PropertyTypeGroupID=1&TransactionTypeId=2&PropertySearchTypeId=0&Currency=CAD",
     "results_wanted": 300,
-    "max_pages": 5,
-    "records_per_page": 100
+    "max_pages": 5
 }
 ```
 
@@ -178,57 +203,64 @@ Increase the page size to reduce the number of requests while collecting more li
 
 ```json
 {
-    "listing_id": "30339029",
-    "mls_number": "N13838330",
-    "url": "https://www.realtor.ca/real-estate/30339029/35-annsleywood-court-vaughan-kleinburg",
-    "relative_url": "/real-estate/30339029/35-annsleywood-court-vaughan-kleinburg",
-    "price": "$2,199,000",
-    "price_unformatted": 2199000,
+    "listing_id": "30340163",
+    "mls_number": "W13839638",
+    "url": "https://www.realtor.ca/real-estate/30340163/51-arcadian-circle-toronto-long-branch",
+    "relative_url": "/real-estate/30340163/51-arcadian-circle-toronto-long-branch",
+    "price": "$839,000",
+    "price_unformatted": 839000,
     "property_type": "Single Family",
-    "transaction_type": "For sale",
     "ownership_type": "Freehold",
-    "address": "35 ANNSLEYWOOD COURT, Vaughan (Kleinburg), Ontario L4H3N5",
-    "street_address": "35 ANNSLEYWOOD COURT",
+    "address": "51 ARCADIAN CIRCLE, Toronto (Long Branch), Ontario M8W2Z4",
+    "street_address": "51 ARCADIAN CIRCLE",
     "province": "Ontario",
-    "postal_code": "L4H3N5",
-    "latitude": 43.8451897,
-    "longitude": -79.635104,
-    "bedrooms": "4 + 1",
-    "bathrooms": "5",
+    "postal_code": "M8W2Z4",
+    "latitude": 43.5937205,
+    "longitude": -79.5271542,
+    "bedrooms": "2",
+    "bathrooms": "2",
     "half_bathrooms": "1",
-    "size_interior": "278.7068 m2",
-    "stories_total": "2",
+    "size_interior": "102.1925 m2",
+    "stories_total": "1",
     "building_type": "House",
-    "basement_type": "Partially finished",
-    "land_size": "60.7 x 120 FT",
-    "parking_type": "Attached Garage, Garage",
-    "parking_spaces": "7",
-    "features": "Ravine",
-    "amenities_nearby": "Schools",
-    "public_remarks": "Welcome to the prestigious Heritage Estates Platinum Collection by Rosehaven Homes, an exclusive enclave of 44 luxury estate residences in the heart of Kleinburg.",
-    "photo_url": "https://cdn.realtor.ca/listings/TS639262730289070000/reb82/highres/0/n13838330_1.jpg",
+    "building_amenities": "Fireplace(s)",
+    "land_size": "30 x 171 FT",
+    "land_frontage": "30 ft",
+    "parking_type": "Detached Garage, Garage",
+    "parking_spaces": "2",
+    "photo_url": "https://cdn.realtor.ca/listings/TS639262821898200000/reb82/highres/8/w13839638_1.jpg",
     "photo_urls": [
-        "https://cdn.realtor.ca/listings/TS639262730289070000/reb82/highres/0/n13838330_1.jpg",
-        "https://cdn.realtor.ca/listings/TS639262730289070000/reb82/highres/0/n13838330_2.jpg",
-        "https://cdn.realtor.ca/listings/TS639262730289070000/reb82/highres/0/n13838330_3.jpg"
+        "https://cdn.realtor.ca/listings/TS639262821898200000/reb82/highres/8/w13839638_1.jpg",
+        "https://cdn.realtor.ca/listings/TS639262821898200000/reb82/highres/8/w13839638_2.jpg",
+        "https://cdn.realtor.ca/listings/TS639262821898200000/reb82/highres/8/w13839638_3.jpg"
+    ],
+    "media": [
+        {
+            "type": "VideoTourWebsite",
+            "url": "https://sites.happyhousegta.com/mls/267387686"
+        }
     ],
     "agents": [
         {
-            "name": "TYLER MCLAY",
+            "name": "LEE HUDDLESTON",
             "position": "Salesperson",
-            "phone": "991-2432",
-            "organization": "REMAX YOUR COMMUNITY REALTY"
+            "phone": "259-9639",
+            "email": "578297478",
+            "organization": "ROYAL LEPAGE PORRITT REAL ESTATE",
+            "photo_url": "https://cdn.realtor.ca/individuals/TS638852463600000000/highres/1228896.jpg"
         }
     ],
-    "updated_date": "2026-09-29T14:03:48.899Z"
+    "updated_date": "2026-09-29T16:36:29.816Z"
 }
 ```
 
 ## Tips for Best Results
 
 - **Use map URLs for precision** - Open Realtor.ca, apply your filters (area, property type, transaction type, sort order), then copy the map URL. The Actor reads all filters from the URL.
+- **Filter with the built-in inputs** - Bedrooms, bathrooms, price, interior size, and land size filters combine with a map URL, and an explicit input wins over the same filter inside the URL.
+- **Size filters match published sizes** - Realtor.ca only matches interior size filters against listings that publish an exact square footage, so size filters return fewer results than price or bedroom filters.
 - **Smaller areas work better** - Narrow map areas usually return more complete datasets. Split broad Canada-wide searches into city or neighbourhood searches.
-- **Full galleries come from each listing record** - The complete image gallery and extra building details are collected from each listing's own record, which adds one request per listing. Leave `include_details` enabled for complete data, or disable it when you only need the search-level fields.
+- **Full galleries are built in** - Every listing is completed with its full photo gallery automatically, and no listing page is opened, so runs stay fast.
 - **Know the source cap** - Realtor.ca returns up to 600 listings per search area. Split large regions into smaller searches if you need more.
 - **Start small** - Test with 20 listings and 2 pages before running larger jobs.
 - **Use newest-first sorting** - The default sort returns the most recent listings first, which is useful for monitoring new inventory.
@@ -256,9 +288,9 @@ Increase the page size to reduce the number of requests while collecting more li
 
 Use Realtor.ca map or search URLs for best results. The Actor reads the URL filters and uses them for listing collection. Detail page URLs are not used as search input.
 
-### What happens if I provide both a URL and a keyword?
+### What happens if I provide both a URL and a location?
 
-The keyword search runs and the URL is ignored. To collect a specific map area, leave the keyword and location empty and provide only the map URL.
+The location search runs and the URL is ignored. To collect a specific map area, leave the location empty and provide only the map URL.
 
 ### Can I collect rental listings?
 
@@ -276,10 +308,6 @@ Some Realtor.ca listings do not publish every field. Empty values are removed so
 
 You can set the number of listings you want, but Realtor.ca returns at most 600 listings for a single search area. Split large areas into smaller city or neighbourhood searches for better coverage.
 
-### What does `records_per_page` change?
-
-It sets how many listings are requested per page, up to 100. Larger pages mean fewer requests, and smaller pages are useful when you want to spread collection across more pages.
-
 ### Can I export the data to CSV or Excel?
 
 Yes. Apify datasets can be downloaded in CSV, Excel, JSON, XML, and other supported formats.
@@ -290,7 +318,7 @@ Yes. Schedule the Actor in Apify Console to refresh data hourly, daily, or weekl
 
 ### Can I collect listing photos using this Actor?
 
-Yes. `photo_url` is the first image and `photo_urls` contains the full gallery in the order it was published, which is often 20 to 50 images for a listing. Set `include_details` to `false` to collect only the primary image.
+Yes. `photo_url` is the first image and `photo_urls` contains the full gallery in the order it was published, which is often 20 to 50 images for a listing. Galleries are completed automatically for every listing.
 
 ### Is it legal to scrape Realtor.ca?
 
