@@ -731,7 +731,9 @@ function validateSearchPayload(data) {
 async function createStealthSession({ mapUrl, proxyUrl }) {
     const proxy = browserProxySettings(proxyUrl);
     const profileDir = mkdtempSync(join(tmpdir(), 'realtor-profile-'));
+    const launchStarted = Date.now();
     const context = await launchStealthContext(profileDir, proxy);
+    log.info(`Browser launch completed in ${Date.now() - launchStarted}ms.`);
     const page = context.pages()[0] || (await context.newPage());
     const cookieJar = new Map();
     let httpClient = null;
@@ -776,29 +778,28 @@ async function createStealthSession({ mapUrl, proxyUrl }) {
     }
 
     async function loadMapPage() {
-        await page.goto(mapUrl, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+        // Clearance, not deferred map scripts, determines when HTTP requests can start.
+        await page.goto(mapUrl, { waitUntil: 'commit', timeout: NAVIGATION_TIMEOUT_MS });
+        await waitForClearance(page, CLEARANCE_TIMEOUT_MS);
         const dismiss = page.getByRole('link', { name: 'Dismiss' });
         if (await dismiss.isVisible({ timeout: DISMISS_TIMEOUT_MS }).catch(() => false)) {
             await dismiss.click({ timeout: DISMISS_TIMEOUT_MS }).catch(() => {});
         }
-        await waitForClearance(page, CLEARANCE_TIMEOUT_MS);
     }
 
     async function open() {
         log.info('Opening Realtor.ca in a stealth browser session to establish API access.');
+        const started = Date.now();
         await loadMapPage();
         const userAgent = await captureSession();
-        log.info(`Session established. Direct requests are ready with the ${chromeProfileFor(userAgent)} profile.`);
+        log.info(
+            `Session established in ${Date.now() - started}ms. Direct requests are ready with the ${chromeProfileFor(userAgent)} profile.`,
+        );
     }
 
     /** Reloads the map page to refresh an expired bot-check clearance. */
     async function refreshSession() {
         try {
-            const clearance = await waitForClearance(page, CLEARANCE_TIMEOUT_MS);
-            if (clearance === 'ready') {
-                await captureSession();
-                return true;
-            }
             await loadMapPage();
             await captureSession();
             return true;
@@ -851,16 +852,28 @@ async function createStealthSession({ mapUrl, proxyUrl }) {
         const started = Date.now();
         try {
             const result = await page.evaluate(
-                async ({ url, payload, headers }) => {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers,
-                        body: payload,
-                        credentials: 'include',
-                    });
-                    return { ok: response.ok, status: response.status, text: await response.text() };
+                async ({ url, payload, headers, timeoutMs }) => {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), timeoutMs);
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers,
+                            body: payload,
+                            credentials: 'include',
+                            signal: controller.signal,
+                        });
+                        return { ok: response.ok, status: response.status, text: await response.text() };
+                    } finally {
+                        clearTimeout(timer);
+                    }
                 },
-                { url: SEARCH_ENDPOINT, payload: body, headers: PAGE_FETCH_HEADERS },
+                {
+                    url: SEARCH_ENDPOINT,
+                    payload: body,
+                    headers: PAGE_FETCH_HEADERS,
+                    timeoutMs: HTTP_REQUEST_TIMEOUT_MS,
+                },
             );
 
             if (!result.ok) return { error: `HTTP ${result.status}` };
@@ -886,17 +899,23 @@ async function createStealthSession({ mapUrl, proxyUrl }) {
             if (direct.data) return direct;
             lastError = direct.error;
 
+            log.warning(`Direct search request failed (${lastError}); trying the browser session.`);
+            const inPage = await searchInPage(body);
+            if (inPage.data) {
+                // Browser requests may rotate API cookies; use them on the next direct request.
+                await captureSession();
+                return inPage;
+            }
+            lastError = inPage.error || lastError;
+
             if (attempt === PAGE_ATTEMPTS) break;
 
-            log.debug(`Direct search request failed (${lastError}); refreshing the session.`);
+            log.debug(`Search request failed (${lastError}); refreshing the session.`);
             await refreshSession();
             await page.waitForTimeout(RETRY_PAUSE_MS);
         }
 
-        const inPage = await searchInPage(body);
-        if (inPage.data) return inPage;
-
-        return { blocked: true, error: inPage.error || lastError };
+        return { blocked: true, error: lastError };
     }
 
     /** Checks that a photo exists, using the direct client first. */
@@ -1043,9 +1062,11 @@ async function main() {
 
                 // Galleries are completed from the image service, so no listing page
                 // or detail record has to be requested.
+                const galleryStarted = Date.now();
                 const galleries = await mapWithConcurrency(batch, GALLERY_CONCURRENCY, (listing) =>
                     activeSession.photoGallery(listing),
                 );
+                log.debug(`Photo galleries for ${batch.length} listings completed in ${Date.now() - galleryStarted}ms.`);
 
                 await Actor.pushData(batch.map((listing, index) => mapListing(listing, galleries[index])));
                 saved += batch.length;

@@ -6,7 +6,7 @@
 - Auth: none, but the endpoint sits behind a Cloudflare bot check that is bound to the client session
 - Pagination: `CurrentPage`, `RecordsPerPage` (max 100), `MaximumResults`. `Paging` reports `TotalPages`; Realtor.ca caps a single search area at `MaxRecords: 600`
 - Input source: Realtor.ca map URL hash parameters or actor filters
-- Selected implementation: a stealth Chrome browser session that replays the same internal search request with an in-page `fetch`
+- Selected implementation: a Chrome browser session for bootstrap, then a reusable Impit client for search and photo requests; bounded in-page `fetch` is the fallback
 
 ## Candidate Matrix
 
@@ -61,12 +61,13 @@ The full gallery is resolved from the public image service by probing the photo 
 
 1. Launch a real Chrome profile (`channel: 'chrome'`) in headful mode through a persistent context. Headful is required: headless Chromium was blocked, and non-browser clients without a session were blocked.
 2. Open the Realtor.ca map URL so the session obtains bot-check cookies and the site's own search request warms the API path.
-3. Dismiss the cookie and terms banner with a short, non-blocking check, and wait for the bot check to clear (poll capped at 10 seconds).
+3. Wait only for document commit, then poll for bot-check clearance (capped at 10 seconds). Do not wait for deferred map scripts to finish before handing off to HTTP. Dismiss the cookie and terms banner with a short, non-blocking check.
 4. Copy the browser cookies and the browser user agent into a direct HTTP client (`impit`, profile chosen by browser version). The proxy session stays the same, so the exit IP matches the cleared session.
-5. Send all search and photo requests through that client. The browser is only used again if a direct request is refused, and a refused request triggers one session refresh before the in-page fallback.
-6. Validate that each response is JSON, contains `Results`, and reports a match count. An empty list without a match count is treated as throttled, not as the end of the results.
-7. Page through `CurrentPage` up to `results_wanted` and `max_pages`, requesting 100 records per page.
-8. Complete each saved record with its gallery by probing the image service, and never request a per-listing detail record.
+5. Send all search and photo requests through that client. The browser remains available but is used for search only when a direct request fails.
+6. If a direct search fails, try the same request in-page immediately, with a 30-second abort timeout covering both fetch and body reading. A successful fallback copies the refreshed browser cookies back to Impit for the next page. If both paths fail, reload and recapture the session before the bounded retry.
+7. Validate that each response is JSON, contains `Results`, and reports a match count. An empty list without a match count is treated as throttled, not as the end of the results.
+8. Page through `CurrentPage` up to `results_wanted` and `max_pages`, requesting 100 records per page.
+9. Complete each saved record with its gallery by probing the image service, and never request a per-listing detail record.
 
 ## Fast path measurements
 
@@ -78,6 +79,12 @@ The full gallery is resolved from the public image service by probing the photo 
 A direct client is about three times faster than fetching from inside the page. The client must present the impersonation profile closest to the browser that cleared the session: with `chrome151` and the browser user agent, requests returned HTTP 200, while the generic `chrome` profile was answered with the bot-check page even with valid cookies and a matching user agent. Requests without the session cookies were blocked outright.
 
 Bootstrap cost on a healthy session: about 2s for the browser launch, 4s for the map page, and about 1s for the first warmed search request.
+
+### Startup optimization check
+
+Local 20-listing default-area runs without a proxy both completed successfully. The original source took 34.4 seconds overall, including about 7.0 seconds between opening the map and establishing the session. The updated source took 15.3 seconds overall, with a 0.7-second browser launch and a 1.9-second map/session handoff. These are separate smoke-test samples, not a controlled benchmark or an Apify residential-proxy guarantee; network and browser shutdown times varied. One photo probe needed its existing fallback in the updated run.
+
+Logs now report browser launch and map/session setup durations at INFO, plus search and gallery durations at DEBUG. The reported two-minute cloud startup has not been reproduced locally; the cloud run log is needed to identify its remaining cause.
 
 ## Image galleries
 
