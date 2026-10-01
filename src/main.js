@@ -4,6 +4,7 @@ import { Impit } from 'impit';
 import { tmpdir } from 'os';
 import { chromium } from 'patchright';
 import { join } from 'path';
+import { setTimeout as sleep } from 'timers/promises';
 
 const SEARCH_ENDPOINT = 'https://api2.realtor.ca/Listing.svc/AsyncPropertySearch_Post';
 const MAP_PAGE_URL = 'https://www.realtor.ca/map';
@@ -209,6 +210,15 @@ function firstDefined(...values) {
 function errorText(error) {
     const message = error?.message ? String(error.message) : String(error);
     return message.split('\n')[0].trim().slice(0, 200);
+}
+
+function isTemporaryNavigationError(error) {
+    return (
+        error?.name === 'TimeoutError' ||
+        /net::ERR_(?:TIMED_OUT|CONNECTION_TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED)\b/.test(
+            String(error?.message),
+        )
+    );
 }
 
 /** Picks the impersonation profile closest to the browser that established the session. */
@@ -995,9 +1005,29 @@ async function main() {
     let sessionRestarts = 0;
 
     async function openSession() {
-        if (session) await session.close();
-        session = await createStealthSession({ mapUrl: buildMapUrl(params), proxyUrl: await newProxyUrl() });
-        await session.open();
+        for (;;) {
+            if (session) {
+                await session.close();
+                session = undefined;
+            }
+            session = await createStealthSession({ mapUrl: buildMapUrl(params), proxyUrl: await newProxyUrl() });
+            try {
+                await session.open();
+                return;
+            } catch (error) {
+                if (!isTemporaryNavigationError(error)) throw error;
+                if (sessionRestarts >= MAX_SESSION_RESTARTS) {
+                    throw new Error(
+                        `Map navigation failed after exhausting ${MAX_SESSION_RESTARTS} session restarts (${errorText(error)}). Check target connectivity and the configured proxy.`,
+                    );
+                }
+                sessionRestarts++;
+                log.warning(
+                    `Map navigation failed (${errorText(error)}); retrying with a fresh proxy session and browser profile (attempt ${sessionRestarts}/${MAX_SESSION_RESTARTS}).`,
+                );
+                await sleep(RETRY_PAUSE_MS * 2 ** (sessionRestarts - 1) + Math.floor(Math.random() * 250));
+            }
+        }
     }
 
     async function restartSession() {
@@ -1066,7 +1096,9 @@ async function main() {
                 const galleries = await mapWithConcurrency(batch, GALLERY_CONCURRENCY, (listing) =>
                     activeSession.photoGallery(listing),
                 );
-                log.debug(`Photo galleries for ${batch.length} listings completed in ${Date.now() - galleryStarted}ms.`);
+                log.debug(
+                    `Photo galleries for ${batch.length} listings completed in ${Date.now() - galleryStarted}ms.`,
+                );
 
                 await Actor.pushData(batch.map((listing, index) => mapListing(listing, galleries[index])));
                 saved += batch.length;

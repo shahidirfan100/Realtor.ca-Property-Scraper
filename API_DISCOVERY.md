@@ -86,6 +86,15 @@ Local 20-listing default-area runs without a proxy both completed successfully. 
 
 Logs now report browser launch and map/session setup durations at INFO, plus search and gallery durations at DEBUG. The reported two-minute cloud startup has not been reproduced locally; the cloud run log is needed to identify its remaining cause.
 
+### Cloud navigation timeout recovery (2026-10-01)
+
+- Reported failure: build `oSAVubHeWtjAhMuI2` launched Chrome successfully, but its initial map navigation ended with `page.goto: net::ERR_TIMED_OUT` before any API request. The exact cause of the cloud connection timeout is not established by that log.
+- Confirmed implementation gap: initial navigation exceptions bypassed the existing search-session recovery. The source already used `waitUntil: 'commit'` and a 60-second navigation limit; Chromium can report a network timeout earlier than that limit.
+- Scope: startup/session recovery in `src/main.js`, regression tests in `src/main.test.js`, and this evidence note. Search filters, pagination, output mapping, browser profiles, proxy input, and schema defaults are unchanged.
+- Recovery: temporary Chromium connection/proxy errors and Playwright navigation timeouts now close the old browser and retry with a fresh browser profile and proxy session. Startup and search recovery share the existing three-restart budget. Failed attempts use bounded exponential backoff with jitter; successful navigation has no added delay. Certificate/configuration errors are not retried, and exhausted navigation retries fail the Actor rather than accepting an empty dataset.
+- Acceptance checks: regression coverage for the reported timeout, Playwright timeouts, permanent navigation errors, exhaustion/cleanup, shared recovery budget, search-mode isolation, and browser-to-HTTP proxy continuity; lint and JSON validation; a live local run saving 20 listings.
+- Baseline and updated live runs both saved 20 listings locally without a proxy. Updated launch took 2.17 seconds and map/session setup took 1.82 seconds. Local Apify Proxy credentials were unavailable, so cloud residential-proxy recovery still requires a deployed test; local success does not establish that every proxy exit can reach Realtor.ca.
+
 ## Image galleries
 
 The search payload returns exactly one photo per listing, so the gallery has to be completed separately. Two options were evaluated:
